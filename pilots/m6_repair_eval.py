@@ -4,10 +4,12 @@ Three measurements per language (Telugu, Tamil):
 
 1. Synthetic: `split_mark` and `virama_drop` akshara errors injected at word error rate 0.10
    into the first 300 non-empty sample sentences, seeds 0-9. Akshara error rate against the
-   clean sentence before and after repair; share of injected errors fixed per op.
+   clean sentence before and after repair; share of injected errors fixed per op, over pure
+   sentences (only that op injected) and over all sentences containing that op.
 2. Real OCR: Tesseract outputs from P1 (`data/pilots/p1_ocr/<page_id>_L<level>.txt`) scored
-   with `strip_invisible` on both sides, akshara error rate before and after repair, rule
-   counts, and the residual error types left after repair.
+   with `strip_invisible` on both sides, akshara error rate before and after repair, pages
+   that got better and worse, rule counts, residual error types, and whitespace-before-mark
+   counts in GT and OCR.
 3. Over-correction: `repair_text` on every non-empty line of the full clean sample files.
    Target: zero changed words.
 
@@ -30,6 +32,7 @@ from ocrrag.akshara import segment
 from ocrrag.align import align, classify, error_rate
 from ocrrag.noise import inject_akshara_errors
 from ocrrag.repair import repair_text
+from ocrrag.script import char_class
 from ocrrag.text import normalize, strip_invisible
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,8 +51,8 @@ SYNTH_RATE = 0.10
 SEEDS = tuple(range(10))
 SYNTH_OP_WEIGHTS = {"split_mark": 1.0, "virama_drop": 1.0}
 SYNTH_OPS = ("split_mark", "virama_drop")
+MARK_CLASSES = frozenset({"matra", "virama", "modifier"})
 EXAMPLE_LIMIT = 10
-REPAIR_RULES = ("rejoin_mark", "dedupe_mark", "rejoin_conjunct", "nfc")
 
 
 def log(msg: str) -> None:
@@ -64,6 +67,15 @@ def load_lines(lang: str) -> list[str]:
 
 def fmt_counter(c: Counter) -> str:
     return "; ".join(f"{k}={v}" for k, v in sorted(c.items())) or "none"
+
+
+def ws_before_mark(text: str) -> int:
+    """Whitespace characters directly followed by a matra, virama or modifier (the pattern rejoin_mark repairs)."""
+    return sum(
+        1
+        for i, ch in enumerate(text[:-1])
+        if ch.isspace() and char_class(text[i + 1]) in MARK_CLASSES
+    )
 
 
 def residual_types(gt: str, hyp: str) -> Counter:
@@ -94,9 +106,11 @@ def synthetic(lang: str) -> dict:
     per_seed_before: list[float] = []
     per_seed_after: list[float] = []
     entries = Counter()
-    single = Counter()
-    single_mixed = Counter()
-    single_fixed = Counter()
+    single = Counter()        # sentences with exactly one entry of the op (any other ops allowed)
+    single_mixed = Counter()  # of those, sentences that also had other injected ops
+    single_fixed = Counter()  # of those, fixed (counted unfixed when mixed)
+    pure_n = Counter()        # sentences whose only injected op is this one
+    pure_fixed = Counter()
     for seed in SEEDS:
         rng = random.Random(seed)
         bef_seed: list[float] = []
@@ -104,20 +118,22 @@ def synthetic(lang: str) -> dict:
         for clean in sentences:
             noisy, entry_log = inject_akshara_errors(clean, SYNTH_RATE, rng, SYNTH_OP_WEIGHTS)
             repaired, _ = repair_text(noisy)
-            b = error_rate(clean, noisy, "akshara")
-            a = error_rate(clean, repaired, "akshara")
-            bef_seed.append(b)
-            aft_seed.append(a)
+            bef_seed.append(error_rate(clean, noisy, "akshara"))
+            aft_seed.append(error_rate(clean, repaired, "akshara"))
+            fixed_now = normalize(repaired) == normalize(clean)
             per_op = Counter(e["op"] for e in entry_log)
             entries.update(per_op)
             for op, k in per_op.items():
-                if k != 1:
-                    continue
-                single[op] += 1
-                if len(entry_log) > 1:
-                    single_mixed[op] += 1
-                if normalize(repaired) == normalize(clean):
-                    single_fixed[op] += 1
+                if k == 1:
+                    single[op] += 1
+                    if len(entry_log) > 1:
+                        single_mixed[op] += 1
+                    if fixed_now:
+                        single_fixed[op] += 1
+                if set(per_op) == {op}:
+                    pure_n[op] += 1
+                    if fixed_now:
+                        pure_fixed[op] += 1
         before_all.extend(bef_seed)
         after_all.extend(aft_seed)
         per_seed_before.append(mean(bef_seed))
@@ -133,6 +149,8 @@ def synthetic(lang: str) -> dict:
         "single": single,
         "single_mixed": single_mixed,
         "single_fixed": single_fixed,
+        "pure_n": pure_n,
+        "pure_fixed": pure_fixed,
     }
 
 
@@ -143,15 +161,19 @@ def real_ocr(lang: str) -> dict:
     residual_before: Counter = Counter()
     residual_after: Counter = Counter()
     rule_totals: dict[int, Counter] = {level: Counter() for level in LEVELS}
+    gt_ws = 0
+    ocr_ws = 0
     for index in range(1, N_PAGES + 1):
         page_id = f"{lang}_p{index:02d}"
         gt_path = OCR_DIR / f"{page_id}_gt.txt"
         gt = strip_invisible(gt_path.read_text(encoding="utf-8"))
+        gt_ws += ws_before_mark(gt)
         for level in LEVELS:
             raw = (OCR_DIR / f"{page_id}_L{level}.txt").read_text(encoding="utf-8")
             repaired, stats = repair_text(raw)
             hyp_before = strip_invisible(raw)
             hyp_after = strip_invisible(repaired)
+            ocr_ws += ws_before_mark(hyp_before)
             aer_b = error_rate(gt, hyp_before, "akshara")
             aer_a = error_rate(gt, hyp_after, "akshara")
             residual_before.update(residual_types(gt, hyp_before))
@@ -171,11 +193,17 @@ def real_ocr(lang: str) -> dict:
         "residual_before": residual_before,
         "residual_after": residual_after,
         "rule_totals": rule_totals,
+        "gt_ws_before_mark": gt_ws,
+        "ocr_ws_before_mark": ocr_ws,
     }
 
 
 def level_mean(rows: list[dict], lang: str, level: int, key: str) -> float:
     return mean(r[key] for r in rows if r["lang"] == lang and r["level"] == level)
+
+
+def delta(r: dict) -> float:
+    return r["aer_after"] - r["aer_before"]
 
 
 # ---------------------------------------------------------------- 3. over-correction
@@ -240,10 +268,10 @@ def build_report(synth, real, over, timing: float) -> tuple[str, list[dict]]:
     add("## Setup")
     add("")
     add("- Repair: `ocrrag.repair.repair_text`. Rules in order: `rejoin_mark`, `dedupe_mark`, `rejoin_conjunct` (Telugu only), `nfc`.")
-    add(f"- Metric: `ocrrag.align.error_rate`, akshara units. Real OCR is scored with `ocrrag.text.strip_invisible` on both sides (\"scored\"); the repaired OCR is stripped after repair.")
+    add("- Metric: `ocrrag.align.error_rate`, akshara units. Real OCR is scored with `ocrrag.text.strip_invisible` on both sides (\"scored\"); the repaired OCR is stripped after repair.")
     add(f"- Synthetic: first {SYNTH_SENTENCES} non-empty lines of each sample file, injected with `inject_akshara_errors` at word error rate {SYNTH_RATE:.2f}, op weights {SYNTH_OP_WEIGHTS}, seeds {SEEDS[0]}-{SEEDS[-1]} (a fresh `random.Random(seed)` per seed, applied per sentence). Error rate is measured against the clean sentence.")
-    add("- Fixed (synthetic): per sentence with exactly one injected entry of that op, fixed means `normalize(repaired) == normalize(clean)`. The count of such sentences that also contained other injected ops is shown, because those sentences cannot become exact matches through an op the rules do not reach.")
-    add("- Real OCR: Tesseract outputs from P1 (`data/pilots/p1_ocr/<page_id>_L<level>.txt`) against `<page_id>_gt.txt`. Figures are the mean over the 20 pages of the language.")
+    add("- Fixed (synthetic): a sentence counts as fixed when `normalize(repaired) == normalize(clean)`. Two shares are reported. The **pure** share uses only sentences whose sole injected op is that op; it is the headline. The **all-sentences** share uses sentences with exactly one entry of that op. It counts sentences that also had another injected op as unfixed, because those cannot match the clean sentence through this repair, so that share is biased down.")
+    add("- Real OCR: Tesseract outputs from P1 (`data/pilots/p1_ocr/<page_id>_L<level>.txt`) against `<page_id>_gt.txt`. Figures are the mean over the 20 pages of the language. A page-level result is one page at one level (80 per language, 160 in total).")
     add("- Over-correction: `repair_text` on every non-empty line of the full clean sample files. Changed words are counted with a token diff.")
     add(f"- Runtime: {timing:.1f} s.")
     add("")
@@ -259,15 +287,16 @@ def build_report(synth, real, over, timing: float) -> tuple[str, list[dict]]:
     add("")
     add("Share of injected errors fixed, per op:")
     add("")
-    add("| lang | op | injected entries (all sentences) | sentences with exactly one such entry (n) | of which also had other ops (n) | fixed | fixed share |")
-    add("|---|---|---|---|---|---|---|")
+    add("| lang | op | pure sentences (n) | pure fixed | **pure fixed share** | all sentences with one entry of the op (n) | of which mixed (unfixed) | fixed | all-sentences share |")
+    add("|---|---|---|---|---|---|---|---|---|")
     for lang in LANGS:
         s = synth[lang]
         for op in SYNTH_OPS:
-            n = s["single"][op]
-            fixed = s["single_fixed"][op]
-            share = fixed / n if n else float("nan")
-            add(f"| {LANG_NAMES[lang]} | {op} | {s['entries'][op]} | {n} | {s['single_mixed'][op]} | {fixed} | {share:.3f} |")
+            pn, pf = s["pure_n"][op], s["pure_fixed"][op]
+            n, f = s["single"][op], s["single_fixed"][op]
+            pshare = pf / pn if pn else float("nan")
+            ashare = f / n if n else float("nan")
+            add(f"| {LANG_NAMES[lang]} | {op} | {pn} | {pf} | **{pshare:.3f}** | {n} | {s['single_mixed'][op]} | {f} | {ashare:.3f} |")
     add("")
     for lang in LANGS:
         s = synth[lang]
@@ -281,26 +310,38 @@ def build_report(synth, real, over, timing: float) -> tuple[str, list[dict]]:
     add("")
     add("Mean akshara error rate over 20 pages per level.")
     add("")
-    add("| lang | level | AER before | AER after | change | pages worse after | rules fired (total over pages) |")
-    add("|---|---|---|---|---|---|---|")
+    add("| lang | level | AER before | AER after | change | pages better | pages worse | rules fired (total over pages) |")
+    add("|---|---|---|---|---|---|---|---|")
+    better_pages: list[dict] = []
     worse_pages: list[dict] = []
     for lang in LANGS:
         lang_rows = real[lang]["rows"]
         for level in LEVELS:
             b = level_mean(lang_rows, lang, level, "aer_before")
             a = level_mean(lang_rows, lang, level, "aer_after")
-            worse = [r for r in lang_rows if r["level"] == level and r["aer_after"] > r["aer_before"]]
+            here = [r for r in lang_rows if r["level"] == level]
+            better = [r for r in here if delta(r) < 0]
+            worse = [r for r in here if delta(r) > 0]
+            better_pages.extend(better)
             worse_pages.extend(worse)
             totals = real[lang]["rule_totals"][level]
-            add(f"| {LANG_NAMES[lang]} | L{level} | {b:.4f} | {a:.4f} | {a - b:+.5f} | {len(worse)} | {fmt_counter(totals)} |")
+            add(f"| {LANG_NAMES[lang]} | L{level} | {b:.4f} | {a:.4f} | {a - b:+.5f} | {len(better)} | {len(worse)} | {fmt_counter(totals)} |")
+    add("")
+    add(f"Pages better after repair ({len(better_pages)}; page id, level, AER before -> after, change):")
+    add("")
+    if better_pages:
+        for r in better_pages:
+            add(f"- {r['page_id']} L{r['level']}: {r['aer_before']:.4f} -> {r['aer_after']:.4f} ({delta(r):+.5f})")
+    else:
+        add("- none")
+    add("")
+    add(f"Pages worse after repair ({len(worse_pages)}; page id, level, AER before -> after, change):")
     add("")
     if worse_pages:
-        add("Pages worse after repair (page id, level, AER before -> after):")
-        add("")
         for r in worse_pages:
-            add(f"- {r['page_id']} L{r['level']}: {r['aer_before']:.4f} -> {r['aer_after']:.4f}")
+            add(f"- {r['page_id']} L{r['level']}: {r['aer_before']:.4f} -> {r['aer_after']:.4f} ({delta(r):+.5f})")
     else:
-        add("Pages worse after repair: none.")
+        add("- none")
     add("")
     add("Residual error types (akshara ops after scoring, all pages and levels of the language, before -> after repair):")
     add("")
@@ -338,70 +379,66 @@ def build_report(synth, real, over, timing: float) -> tuple[str, list[dict]]:
 
 
 def decision_text(synth, real, over) -> str:
+    all_rows = [r for lang in LANGS for r in real[lang]["rows"]]
     total_changed = sum(over[lang]["changed_words"] for lang in LANGS)
-    improves = all(
-        level_mean(real[lang]["rows"], lang, level, "aer_after") < level_mean(real[lang]["rows"], lang, level, "aer_before")
-        for lang in LANGS
-        for level in LEVELS
-    )
-    worse = sum(
-        1 for lang in LANGS for r in real[lang]["rows"] if r["aer_after"] > r["aer_before"]
-    )
+    n_lines = sum(over[lang]["n_lines"] for lang in LANGS)
+    changed_lines = sum(over[lang]["changed_lines"] for lang in LANGS)
+    gains = [r for r in all_rows if delta(r) < 0]
+    losses = [r for r in all_rows if delta(r) > 0]
+    net = mean(delta(r) for r in all_rows)
+    best = min(all_rows, key=delta)
+    worst = max(all_rows, key=delta)
+    rules_fired_real = sum(sum(real[lang]["rule_totals"][level].values()) for lang in LANGS for level in LEVELS)
     lines: list[str] = []
-    split_share = {
-        lang: synth[lang]["single_fixed"]["split_mark"] / max(1, synth[lang]["single"]["split_mark"])
-        for lang in LANGS
-    }
-    virama_share = {
-        lang: synth[lang]["single_fixed"]["virama_drop"] / max(1, synth[lang]["single"]["virama_drop"])
-        for lang in LANGS
-    }
+
+    def pure(lang: str, op: str) -> str:
+        n = synth[lang]["pure_n"][op]
+        return f"{synth[lang]['pure_fixed'][op] / n:.1%} (n={n})" if n else "n/a"
+
     lines.append(
-        f"- Synthetic: split_mark is fixed in {split_share['te']:.1%} (te) and {split_share['ta']:.1%} (ta) of single-error sentences; "
-        f"virama_drop in {virama_share['te']:.1%} (te) and {virama_share['ta']:.1%} (ta). "
+        f"- Scope: Tesseract output from P1 only ({len(all_rows)} page-level results: 2 languages x 20 pages x 4 levels). "
+        "No VLM or other OCR engine was tested."
+    )
+    lines.append(
+        f"- Synthetic, pure-sentence headline: split_mark fixed {pure('te', 'split_mark')} in Telugu and {pure('ta', 'split_mark')} in Tamil; "
+        f"virama_drop fixed {pure('te', 'virama_drop')} in Telugu and {pure('ta', 'virama_drop')} in Tamil. "
         f"Sentence AER falls from {synth['te']['aer_before']:.4f} to {synth['te']['aer_after']:.4f} (te) and "
         f"from {synth['ta']['aer_before']:.4f} to {synth['ta']['aer_after']:.4f} (ta)."
     )
-    for lang in LANGS:
-        l3b = level_mean(real[lang]["rows"], lang, 3, "aer_before")
-        l3a = level_mean(real[lang]["rows"], lang, 3, "aer_after")
-        lines.append(
-            f"- Real OCR, {LANG_NAMES[lang]} at L3: AER {l3b:.4f} -> {l3a:.4f} (change {l3a - l3b:+.5f}). "
-            f"Pages worse after repair across all levels: {sum(1 for r in real[lang]['rows'] if r['aer_after'] > r['aer_before'])}."
-        )
     lines.append(
-        f"- Over-correction: {total_changed} changed words across {sum(over[l]['n_lines'] for l in LANGS)} clean lines "
-        f"({sum(over[l]['changed_lines'] for l in LANGS)} lines changed)."
+        f"- Real OCR effect: {len(gains)} page-level gain(s) and {len(losses)} page-level loss(es) out of {len(all_rows)}; "
+        f"largest gain {-delta(best):.5f} AER ({best['page_id']} L{best['level']}), "
+        f"largest loss {delta(worst):.5f} AER ({worst['page_id']} L{worst['level']}). "
+        f"Net mean change {net:+.6f} AER per page-level result."
     )
-    max_abs_change = max(
-        abs(level_mean(real[lang]["rows"], lang, level, "aer_after") - level_mean(real[lang]["rows"], lang, level, "aer_before"))
-        for lang in LANGS
-        for level in LEVELS
-    )
-    rules_fired_real = sum(sum(real[lang]["rule_totals"][level].values()) for lang in LANGS for level in LEVELS)
-    if total_changed == 0 and improves:
-        lines.append(
-            "- Verdict: keep rule repair as a stage before indexing. It changes no clean text and lowers the real-OCR akshara "
-            "error rate for both languages at every level."
-        )
-    else:
-        lines.append(
-            "- Verdict: do not keep rule repair as a stage before indexing. "
-            f"It is safe on clean text ({total_changed} changed words) but it gains nothing measurable on real OCR: "
-            f"the largest mean change in any language and level is {max_abs_change:.5f} AER, "
-            f"the rules fired {rules_fired_real} times across 160 page-level results, and {worse} of them got worse. "
-            "The synthetic gain does not carry over, because Tesseract output almost never puts a space before a mark "
-            "(the pattern `rejoin_mark` needs). Its main real boundary error is the reverse: spaces deleted, so words merge."
-        )
     lines.append(
-        "- Error types the rules cannot reach (targets for M6 stage 2 in Plan 4): "
-        "virama_drop (synthetic fixed share 0.000 in both languages; no rule restores a dropped virama); "
-        "matra_swap, consonant_swap and other substitutions; deletions of non-space units (content lost by Tesseract, the bulk of L2-L3 error); "
-        "word merges (a space deleted between two words); and conjunct errors apart from Telugu stray-space conjuncts."
+        f"- Rules fired {rules_fired_real} times across the {len(all_rows)} real-OCR results "
+        f"({fmt_counter(sum((real[l]['rule_totals'][lv] for l in LANGS for lv in LEVELS), Counter()))})."
+    )
+    lines.append(
+        f"- Whitespace directly before a mark (the pattern `rejoin_mark` repairs): "
+        f"GT {real['te']['gt_ws_before_mark'] + real['ta']['gt_ws_before_mark']} occurrences across 40 GT pages; "
+        f"OCR before repair {real['te']['ocr_ws_before_mark'] + real['ta']['ocr_ws_before_mark']} across 160 OCR outputs "
+        f"(te {real['te']['ocr_ws_before_mark']}, ta {real['ta']['ocr_ws_before_mark']})."
     )
     for lang in LANGS:
         top = ", ".join(f"{k} {v}" for k, v in real[lang]["residual_after"].most_common(5))
         lines.append(f"- Residual real-OCR error types after repair, {LANG_NAMES[lang]} (all levels): {top or 'none'}.")
+    lines.append(
+        f"- Over-correction: {total_changed} changed words across {n_lines} clean lines ({changed_lines} lines changed). "
+        f"No rule fired on clean text ({fmt_counter(sum((over[l]['fired'] for l in LANGS), Counter()))}), so this is a no-false-positive check on clean text only."
+    )
+    lines.append(
+        f"- Verdict (scoped to Tesseract output in this pilot): negligible effect ({len(gains)} gain(s), {len(losses)} loss(es), "
+        f"net {net:+.6f} AER per result). Keep the rules as an optional, safe stage "
+        f"({total_changed} changed clean words), and re-test on VLM and other OCR engines in Plan 2, whose errors may include detached marks."
+    )
+    lines.append(
+        "- Error types the rules cannot reach (targets for M6 stage 2 in Plan 4): "
+        f"virama_drop (pure fixed share {pure('te', 'virama_drop')} te, {pure('ta', 'virama_drop')} ta; no rule restores a dropped virama); "
+        "matra_swap, consonant_swap and other substitutions; deletions of non-space units (content lost by Tesseract, the bulk of L2-L3 error); "
+        "word merges (a space deleted between two words); and conjunct errors apart from Telugu stray-space conjuncts."
+    )
     return "\n".join(lines)
 
 
