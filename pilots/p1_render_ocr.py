@@ -5,6 +5,9 @@ degrades each page at levels 0-3 (seed = page index) and OCRs every image with T
 P8 asks whether Tesseract's page mean word confidence tracks the page akshara error rate.
 
 Run from the repository root:  python pilots/p1_render_ocr.py
+With --reuse-ocr, rendering, degradation and OCR are skipped: every table, the confusion
+models, the per-image CSV and the report are recomputed from the stored files in data/pilots/
+(page ground truth, OCR text, and mean_conf/n_words in results/pilots/p1_per_image.csv).
 Writes results/pilots/p1_render_ocr.md, results/pilots/p1_confusions_{te,ta}.json and
 results/pilots/p1_samples/*.png (git-ignored). Page images and OCR text go to data/pilots/.
 Progress is printed to stderr only.
@@ -12,9 +15,11 @@ Progress is printed to stderr only.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import math
 import os
+import re
 import shutil
 import sys
 import time
@@ -201,7 +206,92 @@ def read_per_image(path: Path) -> list[dict]:
     return rows
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Pilot P1 and P8; see the module docstring.")
+    parser.add_argument(
+        "--reuse-ocr",
+        action="store_true",
+        help="skip rendering, degradation and OCR; recompute all metrics and tables from the stored files",
+    )
+    return parser.parse_args(argv)
+
+
+def make_record(lang, page_id, index, level, gt, ocr_text, n_words, mean_conf) -> dict:
+    """All metrics for one image. ``gt`` is the rendered text; ``ocr_text`` is Tesseract's text."""
+    gt_scored = strip_invisible(gt)
+    ocr_scored = strip_invisible(ocr_text)
+    return {
+        "lang": lang,
+        "page_id": page_id,
+        "index": index,
+        "level": level,
+        "gt_scored": gt_scored,
+        "ocr_scored": ocr_scored,
+        "n_words_ocr": n_words,
+        "mean_conf": mean_conf,
+        # raw: as Tesseract and the renderer produced the text
+        "cer_raw": error_rate(gt, ocr_text, "char"),
+        "aer_raw": error_rate(gt, ocr_text, "akshara"),
+        "wer_raw": error_rate(gt, ocr_text, "word"),
+        # scored: zero-width joiners removed from both sides
+        "cer": error_rate(gt_scored, ocr_scored, "char"),
+        "aer": error_rate(gt_scored, ocr_scored, "akshara"),
+        "wer": error_rate(gt_scored, ocr_scored, "word"),
+    }
+
+
+def reconstruct_pages(lang: str) -> list[dict]:
+    """Rebuild the page table from the stored ground truth by replaying build_page's packing.
+
+    No rendering: the kept sentences are the longest prefix (from the cursor) whose
+    page_text equals the stored ground truth; dropped sentences are the packed ones
+    that were not kept, and the next page starts after the kept ones.
+    """
+    sentences = load_sentences(lang)
+    pages: list[dict] = []
+    cursor = 0
+    for index in range(1, N_PAGES + 1):
+        page_id = f"{lang}_p{index:02d}"
+        gt = (OCR_DIR / f"{page_id}_gt.txt").read_text(encoding="utf-8")
+        packed, words, i = 0, 0, cursor
+        while i < len(sentences) and words < TARGET_WORDS:
+            words += len(sentences[i].split())
+            i += 1
+            packed += 1
+        kept = max(k for k in range(1, packed + 1) if page_text(sentences[cursor:cursor + k]) == gt)
+        chosen = sentences[cursor:cursor + kept]
+        pages.append({
+            "lang": lang,
+            "index": index,
+            "page_id": page_id,
+            "gt": gt,
+            "sentences": kept,
+            "words": sum(len(s.split()) for s in chosen),
+            "dropped": packed - kept,
+            "layout": "one_col" if index <= N_PAGES // 2 else "two_col",
+            "font": font_for(index, lang),
+        })
+        cursor += kept
+    return pages
+
+
+def previous_timing() -> dict:
+    """Render and OCR times of the last full run, read back from the report (not re-measured)."""
+    out = {"render": None, "ocr": None}
+    if REPORT_PATH.exists():
+        text = REPORT_PATH.read_text(encoding="utf-8")
+        for key, pattern in (
+            ("render", r"- Rendering \(Chromium, 40 pages\): ([\d.]+) s"),
+            ("ocr", r"- Degradation \+ Tesseract \(160 images\): ([\d.]+) s"),
+        ):
+            m = re.search(pattern, text)
+            if m:
+                out[key] = float(m.group(1))
+    return out
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     t_start = time.perf_counter()
     for d in (PAGES_DIR, OCR_DIR, OUT_DIR, SAMPLES_OUT):
         d.mkdir(parents=True, exist_ok=True)
@@ -211,54 +301,53 @@ def main() -> None:
     pages: list[dict] = []
     records: list[dict] = []
     t_render = t_ocr = t_metrics = 0.0
+    timing_prev = previous_timing() if args.reuse_ocr else {"render": None, "ocr": None}
 
-    for lang in LANGS:
-        sentences = load_sentences(lang)
-        log(f"[{lang}] {len(sentences)} sentences loaded")
-        cursor = 0
-        for index in range(1, N_PAGES + 1):
-            t0 = time.perf_counter()
-            info = build_page(lang, index, sentences, cursor)
-            t_render += time.perf_counter() - t0
-            cursor = info["next_cursor"]
-            spec: PageSpec = info["spec"]
-            pages.append({"lang": lang, "index": index, **{k: v for k, v in info.items() if k not in ("spec", "next_cursor")}, "page_id": spec.page_id})
-            (OCR_DIR / f"{spec.page_id}_gt.txt").write_text(spec.text, encoding="utf-8")
-            log(f"[{spec.page_id}] rendered: {info['sentences']} sentences, {info['words']} words, dropped {info['dropped']}")
-
-            for level in LEVELS:
+    if args.reuse_ocr:
+        log("reuse: rendering and OCR are not run; reading stored files")
+        stored = {(r["page_id"], r["level"]): r for r in read_per_image(PER_IMAGE_CSV)}
+        t0 = time.perf_counter()
+        for lang in LANGS:
+            for page in reconstruct_pages(lang):
+                pages.append(page)
+                for level in LEVELS:
+                    row = stored[(page["page_id"], level)]
+                    ocr_text = (OCR_DIR / f"{page['page_id']}_L{level}.txt").read_text(encoding="utf-8")
+                    records.append(make_record(
+                        lang, page["page_id"], page["index"], level, page["gt"], ocr_text,
+                        row["n_words"], row["mean_conf"],
+                    ))
+        t_metrics += time.perf_counter() - t0
+    else:
+        for lang in LANGS:
+            sentences = load_sentences(lang)
+            log(f"[{lang}] {len(sentences)} sentences loaded")
+            cursor = 0
+            for index in range(1, N_PAGES + 1):
                 t0 = time.perf_counter()
-                img = degrade(PAGES_DIR / f"{spec.page_id}.png", level, seed=index)
-                ocr = ocr_tesseract(img, lang)  # type: ignore[arg-type]
-                t_ocr += time.perf_counter() - t0
-                (OCR_DIR / f"{spec.page_id}_L{level}.txt").write_text(ocr.text, encoding="utf-8")
+                info = build_page(lang, index, sentences, cursor)
+                t_render += time.perf_counter() - t0
+                cursor = info["next_cursor"]
+                spec: PageSpec = info["spec"]
+                pages.append({"lang": lang, "index": index, **{k: v for k, v in info.items() if k not in ("spec", "next_cursor")}, "page_id": spec.page_id, "gt": spec.text})
+                (OCR_DIR / f"{spec.page_id}_gt.txt").write_text(spec.text, encoding="utf-8")
+                log(f"[{spec.page_id}] rendered: {info['sentences']} sentences, {info['words']} words, dropped {info['dropped']}")
 
-                t0 = time.perf_counter()
-                confs = [w.conf for w in ocr.words]
-                gt_scored = strip_invisible(spec.text)
-                ocr_scored = strip_invisible(ocr.text)
-                records.append(
-                    {
-                        "lang": lang,
-                        "page_id": spec.page_id,
-                        "index": index,
-                        "level": level,
-                        "gt_scored": gt_scored,
-                        "ocr_scored": ocr_scored,
-                        "n_words_ocr": len(ocr.words),
-                        "mean_conf": mean(confs) if confs else None,
-                        # raw: as Tesseract and the renderer produced the text
-                        "cer_raw": error_rate(spec.text, ocr.text, "char"),
-                        "aer_raw": error_rate(spec.text, ocr.text, "akshara"),
-                        "wer_raw": error_rate(spec.text, ocr.text, "word"),
-                        # scored: zero-width joiners removed from both sides
-                        "cer": error_rate(gt_scored, ocr_scored, "char"),
-                        "aer": error_rate(gt_scored, ocr_scored, "akshara"),
-                        "wer": error_rate(gt_scored, ocr_scored, "word"),
-                    }
-                )
-                t_metrics += time.perf_counter() - t0
-                log(f"  L{level}: ocr words {len(ocr.words)}, akshara ER raw {records[-1]['aer_raw']:.3f} scored {records[-1]['aer']:.3f}")
+                for level in LEVELS:
+                    t0 = time.perf_counter()
+                    img = degrade(PAGES_DIR / f"{spec.page_id}.png", level, seed=index)
+                    ocr = ocr_tesseract(img, lang)  # type: ignore[arg-type]
+                    t_ocr += time.perf_counter() - t0
+                    (OCR_DIR / f"{spec.page_id}_L{level}.txt").write_text(ocr.text, encoding="utf-8")
+
+                    t0 = time.perf_counter()
+                    confs = [w.conf for w in ocr.words]
+                    records.append(make_record(
+                        lang, spec.page_id, index, level, spec.text, ocr.text,
+                        len(ocr.words), mean(confs) if confs else None,
+                    ))
+                    t_metrics += time.perf_counter() - t0
+                    log(f"  L{level}: ocr words {len(ocr.words)}, akshara ER raw {records[-1]['aer_raw']:.3f} scored {records[-1]['aer']:.3f}")
 
     # Error types (scored text): one ConfusionModel per (language, level), then one per language.
     level_models: dict[tuple[str, int], ConfusionModel] = {}
@@ -335,13 +424,17 @@ def main() -> None:
         for index in SAMPLE_PAGE_INDICES:
             pid = f"{lang}_p{index:02d}"
             dst = SAMPLES_OUT / f"{pid}_L0.png"
-            shutil.copy2(PAGES_DIR / f"{pid}.png", dst)
+            if not args.reuse_ocr:
+                shutil.copy2(PAGES_DIR / f"{pid}.png", dst)
             copied.append(dst)
 
     total = time.perf_counter() - t_start
-    write_report(csv_rows, level_models, pages, p8, copied, {
-        "total": total, "render": t_render, "ocr": t_ocr, "metrics": t_metrics,
-    })
+    if args.reuse_ocr:
+        timing = {"total": total, "render": timing_prev["render"], "ocr": timing_prev["ocr"],
+                  "metrics": t_metrics, "reused": True}
+    else:
+        timing = {"total": total, "render": t_render, "ocr": t_ocr, "metrics": t_metrics, "reused": False}
+    write_report(csv_rows, level_models, pages, p8, copied, timing)
     log(f"done in {total:.1f}s; report at {REPORT_PATH}")
 
 
@@ -470,9 +563,11 @@ def write_report(csv_rows, level_models, pages, p8, copied, timing) -> None:
 
     add("## Timing")
     add("")
-    add(f"- Total wall time: {timing['total']:.1f} s")
-    add(f"- Rendering (Chromium, 40 pages): {timing['render']:.1f} s")
-    add(f"- Degradation + Tesseract (160 images): {timing['ocr']:.1f} s")
+    if timing["reused"]:
+        add("- This report was regenerated with `--reuse-ocr`: rendering and OCR were not run. The render and OCR times below are from the last full run.")
+    add(f"- Total wall time{' (this run)' if timing['reused'] else ''}: {timing['total']:.1f} s")
+    add(f"- Rendering (Chromium, 40 pages): {fmt(timing['render'], 1)} s")
+    add(f"- Degradation + Tesseract (160 images): {fmt(timing['ocr'], 1)} s")
     add(f"- Alignment and metrics (raw and scored, confusion models): {timing['metrics']:.1f} s")
     add("")
 
