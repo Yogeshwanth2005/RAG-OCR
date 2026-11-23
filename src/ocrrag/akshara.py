@@ -47,9 +47,14 @@ def _telugu_unit(text: str, i: int) -> int:
 
 def _tamil_unit(text: str, i: int) -> int:
     """consonant [matra+] [modifier*], or consonant virama alone;
-    க்ஷ and ஸ்ரீ are single bases that take following matras and modifiers."""
-    if text.startswith(_KSHA, i) or text.startswith(_SRI, i):
-        j = i + (len(_KSHA) if text.startswith(_KSHA, i) else len(_SRI))
+    க்ஷ and ஸ்ரீ are single bases that take following matras and modifiers;
+    a bare க்ஷ may also take one pulli, which ends the unit."""
+    if text.startswith(_KSHA, i):
+        j = i + len(_KSHA)
+        if _match(text, j, "virama", "ta"):
+            return j + 1
+    elif text.startswith(_SRI, i):
+        j = i + len(_SRI)
     elif _match(text, i + 1, "virama", "ta"):
         return i + 2
     else:

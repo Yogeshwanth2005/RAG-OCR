@@ -7,7 +7,7 @@
 | Script | Test file | Rows |
 |---|---|---|
 | Telugu (te) | `tests/data/tricky_te.tsv` | 66 (5 seed words from `CASES` + 61 hand-derived) |
-| Tamil (ta) | `tests/data/tricky_ta.tsv` | 68 (6 seed words from `CASES` + 62 hand-derived) |
+| Tamil (ta) | `tests/data/tricky_ta.tsv` | 70 (6 seed words from `CASES` + 62 hand-derived + 2 added after the க்ஷ fix) |
 
 Coverage: two- and three-consonant conjuncts, word-final virama (pulli), anusvara, visarga, chandrabindu (te), aytham (ta), two-part Tamil vowels in both spellings (single code point and decomposed `ெ`+`ா` / `ெ`+`ௗ`), grantha letters (ta: ஜ ஷ ஸ ஹ), க்ஷ and ஸ்ரீ special sequences, ZWJ and ZWNJ placement, and a nukta case (te).
 
@@ -15,11 +15,13 @@ The `expected` column was written by hand from the segmentation rules, before th
 
 ## Automated test result
 
-`pytest -q` (full suite): 25 passed. The akshara tests (`tests/test_akshara.py`): 21 passed, including both TSV lists (`test_tricky_lists[te]`, `test_tricky_lists[ta]`).
+`pytest -q` (full suite): 27 passed. The akshara tests (`tests/test_akshara.py`): 23 passed, including both TSV lists (`test_tricky_lists[te]`, `test_tricky_lists[ta]`).
 
 ## Corrections made
 
-None. The author has not yet reviewed the lists, so no corrections have come in from the author or the Tamil reader.
+No author or reader corrections yet; the author has not reviewed the lists.
+
+Code fix (coordinator ruling): a bare Tamil க்ஷ may take one following pulli, which ends the unit. Added `("லக்ஷ்மி", ["ல", "க்ஷ்", "மி"])` and `("க்ஷ்", ["க்ஷ்"])` to `CASES`, and `லக்ஷ்மி` and `க்ஷ்` rows to `tricky_ta.tsv`. Before the fix the three new checks failed (RED); after it all pass (GREEN).
 
 ## Final result
 
