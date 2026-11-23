@@ -2,6 +2,8 @@
 
 Companion to *Research Proposal_ OCR or Pixels_ Telugu & Tamil Document RAG.md*. Each fix says what to change in the proposal and what to do in practice.
 
+> **Status (draft v2 of the proposal):** Fixes 1–7 have been applied, with the corrections listed under *Fix 9* at the end. Of Fix 8, the metadata split and the footnotes are done; the remaining checks are still open.
+
 Priority: **Fix 1, 3 and 4 first.** Fixes 1 and 3 can silently make results wrong; Fix 4 is what reviewers will ask about.
 
 ---
@@ -106,6 +108,19 @@ Priority: **Fix 1, 3 and 4 first.** Fixes 1 and 3 can silently make results wron
 
 - [ ] Confirm ICDAR 2027 abstract/paper deadlines, page limit, and preprint policy on the official site.
 - [ ] Verify that references 5 (LëtzCross), 7 (Chitrapathak) and 8 (ORB) exist with the listed arXiv IDs.
-- [ ] Move DocLens-VLM and the bodhan-ai model card to footnotes, or remove them; re-measure OCR accuracy on your own data.
-- [ ] Split the metadata line at the top of the proposal (author, advisor, venue) onto separate lines.
+- [x] Move DocLens-VLM and the bodhan-ai model card to footnotes, or remove them; re-measure OCR accuracy on your own data.
+- [x] Split the metadata line at the top of the proposal (author, advisor, venue) onto separate lines.
 - [ ] Anonymise the author line for the double-blind submission version.
+
+---
+
+## Fix 9: Corrections to the fixes above (applied in draft v2)
+
+- **Fix 2:** one akshara rule does not suit both scripts. Tamil treats a consonant with pulli (mei letter) as its own unit, and only க்ஷ and ஸ்ரீ join; Telugu keeps conjuncts together. Separate rules per script, with ZWJ/ZWNJ and nukta handled.
+- **Fix 4:** the LLM correction prompt covers Tamil as well as Telugu.
+- **Fix 5:** pool candidates from a visual retriever too, not only BM25 and BGE-M3, so relevance labels do not favour text retrieval. Report Hit@k, since questions can have several relevant pages.
+- **Fix 6:** the OOV rate is noisy for agglutinative Telugu and Tamil. Use akshara/character n-gram language-model perplexity as the main confidence-free signal, with OOV rate as the simpler variant. H4 is reworded to match.
+- **Fix 7:** both languages are now full parts of the plan: ~200 verified questions per language for submission, ~400 afterwards. The timeline absorbs the extra work from Fixes 3–6.
+- **New: LLM contamination.** Telugu and Tamil Wikipedia are likely in LLM training data. E4 adds a closed-book baseline, and real-scan results are reported separately.
+- **New: consistency.** §1 and §6 now agree that the benchmark covers both languages. An optional English reference set is planned for after submission.
+- **New: references.** VisRAG gets an arXiv ID (2410.10594, to verify); missing authors are marked for completion.
