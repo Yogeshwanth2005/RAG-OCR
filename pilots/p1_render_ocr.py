@@ -12,6 +12,7 @@ Progress is printed to stderr only.
 
 from __future__ import annotations
 
+import csv
 import math
 import os
 import shutil
@@ -22,8 +23,10 @@ from pathlib import Path
 
 from scipy import stats
 
-from ocrrag.align import ConfusionModel, error_rate
+from ocrrag.akshara import segment
+from ocrrag.align import ConfusionModel, align, classify, error_rate
 from ocrrag.degrade import degrade
+from ocrrag.text import normalize, strip_invisible
 from ocrrag.ocr_tesseract import ocr_tesseract
 from ocrrag.render import PageSpec, render_pages
 
@@ -49,7 +52,8 @@ LEVEL_DESCRIPTIONS = {
     3: "level 2 + ink bleed + scanner line artefacts",
 }
 SAMPLE_PAGE_INDICES = (1, 5, 10, 15, 20)
-ERROR_TYPES = ("consonant", "matra", "conjunct", "virama", "boundary", "other")
+ERROR_TYPES = ("consonant", "matra", "conjunct", "virama", "boundary", "other", "insertion", "deletion")
+PER_IMAGE_CSV = OUT_DIR / "p1_per_image.csv"
 PASS_RHO = -0.5
 PASS_P = 0.01
 CRITERION_P1 = "A fluent reader sees no broken letters"
@@ -156,6 +160,47 @@ def correlate(xs: list[float], ys: list[float]) -> tuple[float, float, float, fl
     return float(pr.statistic), float(pr.pvalue), float(sr.statistic), float(sr.pvalue)
 
 
+def op_types(gt: str, hyp: str) -> list[str]:
+    """Error label of each non-equal akshara op.
+
+    Substitutions take ``classify``'s label. Insertions and deletions of
+    non-space units get their own labels; space insertions and deletions keep
+    ``classify``'s "boundary". So "other" means a substitution that ``classify``
+    could not label.
+    """
+    labels = []
+    for op in align(segment(normalize(gt)), segment(normalize(hyp))):
+        kind, ref, hyp_unit = op
+        if kind == "eq":
+            continue
+        unit = ref if kind == "del" else hyp_unit
+        if kind in ("ins", "del") and not unit.isspace():
+            labels.append("insertion" if kind == "ins" else "deletion")
+        else:
+            labels.append(classify(op))
+    return labels
+
+
+def read_per_image(path: Path) -> list[dict]:
+    rows = []
+    with path.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            rows.append({
+                "lang": row["lang"],
+                "page_id": row["page_id"],
+                "level": int(row["level"]),
+                "n_words": int(row["n_words"]),
+                "mean_conf": float(row["mean_conf"]) if row["mean_conf"] else None,
+                "cer_raw": float(row["cer_raw"]),
+                "aer_raw": float(row["aer_raw"]),
+                "wer_raw": float(row["wer_raw"]),
+                "cer": float(row["cer"]),
+                "aer": float(row["aer"]),
+                "wer": float(row["wer"]),
+            })
+    return rows
+
+
 def main() -> None:
     t_start = time.perf_counter()
     for d in (PAGES_DIR, OCR_DIR, OUT_DIR, SAMPLES_OUT):
@@ -190,46 +235,72 @@ def main() -> None:
 
                 t0 = time.perf_counter()
                 confs = [w.conf for w in ocr.words]
+                gt_scored = strip_invisible(spec.text)
+                ocr_scored = strip_invisible(ocr.text)
                 records.append(
                     {
                         "lang": lang,
                         "page_id": spec.page_id,
                         "index": index,
                         "level": level,
-                        "gt": spec.text,
-                        "ocr": ocr.text,
+                        "gt_scored": gt_scored,
+                        "ocr_scored": ocr_scored,
                         "n_words_ocr": len(ocr.words),
                         "mean_conf": mean(confs) if confs else None,
-                        "cer": error_rate(spec.text, ocr.text, "char"),
-                        "akshara": error_rate(spec.text, ocr.text, "akshara"),
-                        "wer": error_rate(spec.text, ocr.text, "word"),
+                        # raw: as Tesseract and the renderer produced the text
+                        "cer_raw": error_rate(spec.text, ocr.text, "char"),
+                        "aer_raw": error_rate(spec.text, ocr.text, "akshara"),
+                        "wer_raw": error_rate(spec.text, ocr.text, "word"),
+                        # scored: zero-width joiners removed from both sides
+                        "cer": error_rate(gt_scored, ocr_scored, "char"),
+                        "aer": error_rate(gt_scored, ocr_scored, "akshara"),
+                        "wer": error_rate(gt_scored, ocr_scored, "word"),
                     }
                 )
                 t_metrics += time.perf_counter() - t0
-                log(f"  L{level}: ocr words {len(ocr.words)}, akshara ER {records[-1]['akshara']:.3f}")
+                log(f"  L{level}: ocr words {len(ocr.words)}, akshara ER raw {records[-1]['aer_raw']:.3f} scored {records[-1]['aer']:.3f}")
 
-    # Error-type shares: one ConfusionModel per (language, level), then one per language.
+    # Error types (scored text): one ConfusionModel per (language, level), then one per language.
     level_models: dict[tuple[str, int], ConfusionModel] = {}
     t0 = time.perf_counter()
     for lang in LANGS:
         for level in LEVELS:
-            pairs = [(r["gt"], r["ocr"]) for r in records if r["lang"] == lang and r["level"] == level]
-            level_models[(lang, level)] = ConfusionModel().fit(pairs)
-    lang_models = {}
+            pairs = [(r["gt_scored"], r["ocr_scored"]) for r in records if r["lang"] == lang and r["level"] == level]
+            model = ConfusionModel().fit(pairs)
+            counts: Counter = Counter()
+            for gt, hyp in pairs:
+                counts.update(op_types(gt, hyp))
+            model.type_counts = counts  # insertions/deletions split out of classify()'s "other"
+            level_models[(lang, level)] = model
     for lang in LANGS:
-        lang_models[lang] = merge_models([level_models[(lang, lvl)] for lvl in LEVELS])
-        lang_models[lang].to_json(OUT_DIR / f"p1_confusions_{lang}.json")
+        merged = merge_models([level_models[(lang, lvl)] for lvl in LEVELS])
+        merged.to_json(OUT_DIR / f"p1_confusions_{lang}.json")
     t_metrics += time.perf_counter() - t0
     log("confusion models written")
 
-    # P8: page-level correlation over all 80 images per language.
+    # Per-image table. P8 reads its values back from this file.
+    with PER_IMAGE_CSV.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["lang", "page_id", "level", "n_words", "mean_conf",
+                         "cer_raw", "aer_raw", "wer_raw", "cer", "aer", "wer"])
+        for r in records:
+            writer.writerow([
+                r["lang"], r["page_id"], r["level"], r["n_words_ocr"],
+                "" if r["mean_conf"] is None else repr(r["mean_conf"]),
+                repr(r["cer_raw"]), repr(r["aer_raw"]), repr(r["wer_raw"]),
+                repr(r["cer"]), repr(r["aer"]), repr(r["wer"]),
+            ])
+    csv_rows = read_per_image(PER_IMAGE_CSV)
+    log(f"per-image table written: {PER_IMAGE_CSV}")
+
+    # P8: page-level correlation over all 80 images per language (scored AER; raw shown for comparison).
     p8 = {}
     for lang in LANGS:
-        rows = [r for r in records if r["lang"] == lang]
-        used = [r for r in rows if r["n_words_ocr"] > 0]
+        rows = [r for r in csv_rows if r["lang"] == lang]
+        used = [r for r in rows if r["n_words"] > 0]
         xs = [r["mean_conf"] for r in used]
-        ys = [r["akshara"] for r in used]
-        pr, pp, sr, sp = correlate(xs, ys)
+        pr, pp, sr, sp = correlate(xs, [r["aer"] for r in used])
+        _, _, sr_raw, sp_raw = correlate(xs, [r["aer_raw"] for r in used])
         passed = (not math.isnan(sr)) and sr <= PASS_RHO and sp < PASS_P
         p8[lang] = {
             "images": len(rows),
@@ -239,18 +310,21 @@ def main() -> None:
             "pearson_p": pp,
             "spearman": sr,
             "spearman_p": sp,
+            "spearman_raw": sr_raw,
+            "spearman_raw_p": sp_raw,
             "passed": passed,
+            "levels": {},
         }
-        # Within one degradation level, so the pooled figure is not driven by level differences.
-        p8[lang]["levels"] = {}
+        # Within one degradation level: the pooled figure mixes between-level differences.
         for level in LEVELS:
             rows_l = [r for r in used if r["level"] == level]
-            pr_l, _, sr_l, sp_l = correlate(
-                [r["mean_conf"] for r in rows_l], [r["akshara"] for r in rows_l]
+            pr_l, pp_l, sr_l, sp_l = correlate(
+                [r["mean_conf"] for r in rows_l], [r["aer"] for r in rows_l]
             )
             p8[lang]["levels"][level] = {
                 "used": len(rows_l),
                 "pearson": pr_l,
+                "pearson_p": pp_l,
                 "spearman": sr_l,
                 "spearman_p": sp_l,
             }
@@ -265,13 +339,17 @@ def main() -> None:
             copied.append(dst)
 
     total = time.perf_counter() - t_start
-    write_report(records, level_models, pages, p8, copied, {
+    write_report(csv_rows, level_models, pages, p8, copied, {
         "total": total, "render": t_render, "ocr": t_ocr, "metrics": t_metrics,
     })
     log(f"done in {total:.1f}s; report at {REPORT_PATH}")
 
 
-def write_report(records, level_models, pages, p8, copied, timing) -> None:
+def _pct(counts: Counter, total: int, key: str) -> str:
+    return fmt(100 * counts.get(key, 0) / total, 1) if total else "n/a"
+
+
+def write_report(csv_rows, level_models, pages, p8, copied, timing) -> None:
     lines: list[str] = []
     add = lines.append
     dropped_total = sum(p["dropped"] for p in pages)
@@ -288,9 +366,14 @@ def write_report(records, level_models, pages, p8, copied, timing) -> None:
     for level in LEVELS:
         add(f"  - level {level}: {LEVEL_DESCRIPTIONS[level]}")
     add("- OCR: Tesseract 5.3.4 via `ocrrag.ocr_tesseract` (`tel` for Telugu, `tam` for Tamil; `--psm 3`).")
-    add("- Metrics (`ocrrag.align.error_rate`, NFC-normalised, whitespace collapsed): CER (char units), akshara error rate (akshara units), WER (word units). Each level figure is the mean over the 20 pages of that language.")
+    add("- Two scorings of every image:")
+    add("  - **raw**: the text as the renderer and Tesseract produced it.")
+    add("  - **scored**: `ocrrag.text.strip_invisible` (removes U+200C and U+200D) applied to both ground truth and OCR, then the same metrics. Tesseract emits word-final ZWNJ in Tamil that the ground truth does not contain; in raw scoring these count as errors. Telugu is affected much less.")
+    add("  - The level tables show both. The error-type tables, the confusion models (`p1_confusions_*.json`), P8 and the per-image table use **scored** text.")
+    add("- Metrics (`ocrrag.align.error_rate`, NFC-normalised, whitespace collapsed): CER (char units), AER (akshara units), WER (word units). Each level figure is the mean over the 20 pages of that language.")
     add("- Mean conf: mean of the per-page mean Tesseract word confidence (0-100), over pages with at least one OCR word. Pages with zero OCR words are counted separately.")
-    add("- Error types: `ocrrag.align.ConfusionModel` fitted on (ground truth, OCR) pairs per (language, level); shares are of all non-equal operations, classified by `ocrrag.align.classify`.")
+    add("- Error types (scored): one op per non-equal akshara alignment step. Substitutions get `ocrrag.align.classify`'s label. Insertions and deletions of non-space units are counted as **insertion** and **deletion**. Space insertions and deletions keep `classify`'s **boundary**. **other** therefore means a substitution `classify` could not label.")
+    add("- Per-image values: `results/pilots/p1_per_image.csv` (80 rows per language per run: 20 pages x 4 levels). P8 is computed from this file.")
     add("- Ground truth and OCR text: `data/pilots/p1_ocr/<page_id>_gt.txt`, `<page_id>_L<level>.txt` (git-ignored).")
     add("")
 
@@ -299,40 +382,39 @@ def write_report(records, level_models, pages, p8, copied, timing) -> None:
     for lang in LANGS:
         add(f"### {LANG_NAMES[lang]} ({lang})")
         add("")
-        add("| level | description | CER | akshara ER | WER | mean conf | pages with 0 OCR words |")
-        add("|---|---|---|---|---|---|---|")
+        add("| level | description | CER raw | CER scored | AER raw | AER scored | WER raw | WER scored | mean conf | pages with 0 OCR words |")
+        add("|---|---|---|---|---|---|---|---|---|---|")
         for level in LEVELS:
-            rows = [r for r in records if r["lang"] == lang and r["level"] == level]
+            rows = [r for r in csv_rows if r["lang"] == lang and r["level"] == level]
             confs = [r["mean_conf"] for r in rows if r["mean_conf"] is not None]
-            zero = sum(1 for r in rows if r["n_words_ocr"] == 0)
+            zero = sum(1 for r in rows if r["n_words"] == 0)
             add(
-                f"| {level} | {LEVEL_DESCRIPTIONS[level]} | {fmt(mean([r['cer'] for r in rows]))} | "
-                f"{fmt(mean([r['akshara'] for r in rows]))} | {fmt(mean([r['wer'] for r in rows]))} | "
+                f"| {level} | {LEVEL_DESCRIPTIONS[level]} | "
+                f"{fmt(mean([r['cer_raw'] for r in rows]))} | {fmt(mean([r['cer'] for r in rows]))} | "
+                f"{fmt(mean([r['aer_raw'] for r in rows]))} | {fmt(mean([r['aer'] for r in rows]))} | "
+                f"{fmt(mean([r['wer_raw'] for r in rows]))} | {fmt(mean([r['wer'] for r in rows]))} | "
                 f"{fmt(mean(confs), 1)} | {zero} |"
             )
         add("")
 
-    add("## Error-type shares (% of non-equal operations)")
+    add("## Error-type shares (scored; % of non-equal akshara ops)")
     add("")
     for lang in LANGS:
         add(f"### {LANG_NAMES[lang]} ({lang})")
         add("")
         add("| level | " + " | ".join(ERROR_TYPES) + " | non-equal ops |")
-        add("|---|" + "---|" * len(ERROR_TYPES) + "---|")
+        add("|---|" + "---|" * (len(ERROR_TYPES) + 1))
         for level in LEVELS:
             counts = level_models[(lang, level)].type_counts
             total = sum(counts.values())
-            cells = [
-                fmt(100 * counts.get(t, 0) / total, 1) if total else "n/a"
-                for t in ERROR_TYPES
-            ]
+            cells = [_pct(counts, total, t) for t in ERROR_TYPES]
             add(f"| {level} | " + " | ".join(cells) + f" | {total} |")
         add("")
 
     add("## P8: Tesseract confidence vs akshara error rate")
     add("")
     add(f'Criterion (verbatim): "{CRITERION_P8}" between Tesseract confidence and akshara error rate.')
-    add(f"Controller operationalisation: PASS if Spearman rho <= {PASS_RHO} and p < {PASS_P}; otherwise FAIL. Unit of analysis: one image (page at one level), x = page mean word confidence, y = page akshara error rate.")
+    add(f"Controller operationalisation: PASS if Spearman rho <= {PASS_RHO} and p < {PASS_P}; otherwise FAIL. Unit of analysis: one image (page at one level), x = page mean word confidence, y = page AER (scored). Read from `p1_per_image.csv`.")
     add("Images with zero OCR words are excluded from the correlation and counted below.")
     add("")
     add("| language | images | excluded (0 words) | used | Pearson r | p | Spearman rho | p | result |")
@@ -346,17 +428,30 @@ def write_report(records, level_models, pages, p8, copied, timing) -> None:
             f"{fmt(s['spearman_p'], 4)} | {verdict} |"
         )
     add("")
-    add("The pooled correlation above covers all four levels, so it partly reflects the difference between levels. The table below repeats the correlation inside each level (20 images per language, minus any with zero OCR words). It is descriptive only and is not part of the pass rule.")
+    add("For comparison only (not the pass rule), Spearman rho with raw AER: " +
+        ", ".join(f"{LANG_NAMES[l]} {fmt(p8[l]['spearman_raw'])} (p {fmt(p8[l]['spearman_raw_p'], 4)})" for l in LANGS) + ".")
     add("")
-    add("| language | level | images used | Pearson r | Spearman rho | p |")
-    add("|---|---|---|---|---|---|")
+    add("The pooled correlation covers all four levels, so a pooled PASS driven by differences between levels is weaker evidence than a within-level correlation. The table below gives the correlation inside each level (descriptive; not part of the pass rule).")
+    add("")
+    add("| language | level | n (images used) | Pearson r | Pearson p | Spearman rho | Spearman p |")
+    add("|---|---|---|---|---|---|---|")
     for lang in LANGS:
         for level in LEVELS:
             s = p8[lang]["levels"][level]
             add(
                 f"| {LANG_NAMES[lang]} | {level} | {s['used']} | {fmt(s['pearson'])} | "
-                f"{fmt(s['spearman'])} | {fmt(s['spearman_p'], 4)} |"
+                f"{fmt(s['pearson_p'], 4)} | {fmt(s['spearman'])} | {fmt(s['spearman_p'], 4)} |"
             )
+    add("")
+
+    add("## Key comparisons (scored unless marked raw)")
+    add("")
+    def lvl(lang, level, key):
+        return mean([r[key] for r in csv_rows if r["lang"] == lang and r["level"] == level])
+    add(f"- Level 0 AER: Telugu {fmt(lvl('te', 0, 'aer'))} (raw {fmt(lvl('te', 0, 'aer_raw'))}), Tamil {fmt(lvl('ta', 0, 'aer'))} (raw {fmt(lvl('ta', 0, 'aer_raw'))}).")
+    add(f"- Level 0 WER: Telugu {fmt(lvl('te', 0, 'wer'))} (raw {fmt(lvl('te', 0, 'wer_raw'))}), Tamil {fmt(lvl('ta', 0, 'wer'))} (raw {fmt(lvl('ta', 0, 'wer_raw'))}).")
+    add(f"- AER by level, scored: Telugu " + ", ".join(f"L{l} {fmt(lvl('te', l, 'aer'))}" for l in LEVELS) + "; Tamil " + ", ".join(f"L{l} {fmt(lvl('ta', l, 'aer'))}" for l in LEVELS) + ".")
+    add(f"- AER by level, raw: Telugu " + ", ".join(f"L{l} {fmt(lvl('te', l, 'aer_raw'))}" for l in LEVELS) + "; Tamil " + ", ".join(f"L{l} {fmt(lvl('ta', l, 'aer_raw'))}" for l in LEVELS) + ".")
     add("")
 
     add("## P1 visual check")
@@ -378,7 +473,7 @@ def write_report(records, level_models, pages, p8, copied, timing) -> None:
     add(f"- Total wall time: {timing['total']:.1f} s")
     add(f"- Rendering (Chromium, 40 pages): {timing['render']:.1f} s")
     add(f"- Degradation + Tesseract (160 images): {timing['ocr']:.1f} s")
-    add(f"- Alignment and metrics (160 records, confusion models): {timing['metrics']:.1f} s")
+    add(f"- Alignment and metrics (raw and scored, confusion models): {timing['metrics']:.1f} s")
     add("")
 
     add("## Pages")
