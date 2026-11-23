@@ -9,14 +9,15 @@ description = "OCR error study for Telugu and Tamil document retrieval (RAG)"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "pillow",
-    "numpy",
-    "playwright",
-    "augraphy",
+    "pillow>=12.3.0,<13",
+    "numpy>=2.5.3,<3",
+    "playwright>=1.65.2,<2",
+    "augraphy>=8.2.6,<9",
+    "scipy>=1.18.1,<2",  # used by pilots/p1_render_ocr.py (correlations)
 ]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest>=9.1.1,<10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
