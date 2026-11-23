@@ -4,6 +4,8 @@ Tests hypothesis H2. For each language, the first N_SENTENCES non-empty lines of
 sample file are corrupted with ``inject_akshara_errors`` at each word error rate, op
 mix and seed. Every changed word is then scored with ``survival(before, after, kind, n)``
 and the scores are averaged per (lang, rate, mix, unit, n), pooled over sentences and seeds.
+Each setting also gets ``mean_span_chars``: the mean number of characters per n-gram over
+the clean words of the same sentences.
 
 Run from the repository root:  python pilots/p3_ngram_survival.py
 Writes results/pilots/p3_ngram_survival.csv and results/pilots/p3_ngram_survival.md.
@@ -19,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from ocrrag.ngrams import survival
+from ocrrag.ngrams import ngrams, survival, units
 from ocrrag.noise import inject_akshara_errors
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,17 +51,7 @@ SETTINGS = (
 LANG_NAMES = {"te": "Telugu", "ta": "Tamil"}
 RATE_RULE = 0.10
 MIX_RULE = "all ops"
-
-# Written after the run; see the report's Decision section.
-DECISION = """\
-Provisional, from sample text only.
-
-- H2 as worded ("aksharas survive at least as well as characters") is not supported. It fails for Telugu (0.340 vs 0.489) and Tamil (0.495 vs 0.518) at rate 0.10, all ops. The gap is not caused by the error rate: survival is flat across rates 0.05 to 0.30 in every setting.
-- The decomposed unit beats both aksharas and chars at n=2 for both languages (Telugu 0.591, Tamil 0.629, all ops, rate 0.10). Decomposed n=2 is the best setting in this pilot, so M1 should index on decomposed units with n=2 unless the Plan 2 corpus run reverses the ordering.
-- Caveat on the comparison: units differ in span. An akshara covers more characters than a char unit, and a decomposed unit covers fewer, so a single error removes a different number of n-grams per unit type. The rule compares n=2/3 aksharas with n=3/4/5 chars, which is not span-matched. Part of the akshara-versus-char gap may come from this, and H2 should be reworded to compare units of matched span (or to compare decomposed against char).
-- Because survival is averaged over changed words only, the rate barely moves the numbers. Rate 0.10 is therefore not especially informative as the deciding rate. The Plan 2 re-run should check that the ranking holds across rates.
-- Recommendation for M1: use the decomposed unit at n=2. Keep akshara and char as fallbacks for the Plan 2 comparison. Reword H2 before Plan 4 so it states the span-matched comparison.
-"""
+SPAN_TOL = 0.5  # characters; span-matched pairs must be this close
 
 
 def log(msg: str) -> None:
@@ -99,6 +91,17 @@ def corrupt(sentences: list[str], rate: float, mix: dict[str, float]) -> tuple[l
     return pairs, dropped
 
 
+def mean_span(sentences: list[str], kind: str, n: int) -> float:
+    """Mean number of characters per n-gram over the clean words of ``sentences``."""
+    total = count = 0
+    for sent in sentences:
+        for word in sent.split():
+            for gram in ngrams(units(word, kind), n):
+                total += len("".join(gram))
+                count += 1
+    return total / count
+
+
 def label(unit: str, n: int) -> str:
     return f"{unit} n={n}"
 
@@ -109,35 +112,126 @@ def fmt(x: float) -> str:
 
 def write_csv(rows: list[dict]) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    fields = ["lang", "rate", "mix", "unit", "n", "mean_survival", "n_words", "n_offmix_dropped", "mean_span_chars"]
     with CSV_PATH.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["lang", "rate", "mix", "unit", "n", "mean_survival", "n_words", "n_offmix_dropped"])
+        w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         for r in rows:
-            w.writerow({**r, "rate": f"{r['rate']:.2f}", "mean_survival": f"{r['mean_survival']:.6f}"})
+            w.writerow({
+                **r,
+                "rate": f"{r['rate']:.2f}",
+                "mean_survival": f"{r['mean_survival']:.6f}",
+                "mean_span_chars": f"{r['mean_span_chars']:.4f}",
+            })
 
 
-def lookup(rows: list[dict], lang: str, rate: float, mix: str, unit: str, n: int) -> float:
+def cell(rows: list[dict], lang: str, rate: float, mix: str, unit: str, n: int) -> dict:
     for r in rows:
         if (r["lang"], r["rate"], r["mix"], r["unit"], r["n"]) == (lang, rate, mix, unit, n):
-            return r["mean_survival"]
+            return r
     raise KeyError((lang, rate, mix, unit, n))
 
 
-def pass_check(rows: list[dict], lang: str) -> tuple[bool, str]:
-    akshara = [(lookup(rows, lang, RATE_RULE, MIX_RULE, u, n), u, n) for u, n in SETTINGS if u == "akshara"]
-    char = [(lookup(rows, lang, RATE_RULE, MIX_RULE, u, n), u, n) for u, n in SETTINGS if u == "char"]
+def survival_at(rows: list[dict], lang: str, rate: float, mix: str, unit: str, n: int) -> float:
+    return cell(rows, lang, rate, mix, unit, n)["mean_survival"]
+
+
+def pass_check(rows: list[dict], lang: str) -> tuple[bool, str, float, float]:
+    akshara = [(survival_at(rows, lang, RATE_RULE, MIX_RULE, u, n), u, n) for u, n in SETTINGS if u == "akshara"]
+    char = [(survival_at(rows, lang, RATE_RULE, MIX_RULE, u, n), u, n) for u, n in SETTINGS if u == "char"]
     best_a = max(akshara)
     best_c = max(char)
     ok = best_a[0] >= best_c[0]
     verdict = "PASS" if ok else "FAIL"
-    detail = (
-        f"best akshara {fmt(best_a[0])} ({label(best_a[1], best_a[2])}) vs "
-        f"best char {fmt(best_c[0])} ({label(best_c[1], best_c[2])})"
+    text = (
+        f"**{LANG_NAMES[lang]} ({lang}): {verdict}**: best akshara {fmt(best_a[0])} "
+        f"({label(best_a[1], best_a[2])}) vs best char {fmt(best_c[0])} ({label(best_c[1], best_c[2])})"
     )
-    return ok, f"**{LANG_NAMES[lang]} ({lang}): {verdict}**: {detail}"
+    return ok, text, best_a[0], best_c[0]
 
 
-def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dict[tuple[str, float, str], int], sentence_counts: dict[str, int]) -> None:
+def span_pairs(rows: list[dict], lang: str) -> list[dict]:
+    """Non-char setting vs char setting pairs whose mean spans are within SPAN_TOL, at rate 0.10 all ops."""
+    base = [r for r in rows if r["lang"] == lang and r["rate"] == RATE_RULE and r["mix"] == MIX_RULE]
+    pairs = []
+    for a in base:
+        if a["unit"] == "char":
+            continue
+        for c in base:
+            if c["unit"] != "char":
+                continue
+            if abs(a["mean_span_chars"] - c["mean_span_chars"]) <= SPAN_TOL:
+                pairs.append({"a": a, "c": c, "winner": "a" if a["mean_survival"] > c["mean_survival"] else "c"})
+    return pairs
+
+
+def decision_text(rows: list[dict]) -> str:
+    lines = ["Provisional, from sample text only.", ""]
+    verdicts = {lang: pass_check(rows, lang) for lang in SAMPLES}
+    lines.append(
+        "- H2 as worded (\"Aksharas survive at least as well as characters\") is not supported on this metric. "
+        "The plan's rule gives " + "; ".join(v[1].replace("**", "") for v in verdicts.values()) + "."
+    )
+
+    # Survival falls with n for every unit type? Checked on the pooled all-ops, rate 0.10 cells.
+    monotone = True
+    for lang in SAMPLES:
+        for unit in ("akshara", "decomposed", "char"):
+            ns = sorted(n for u, n in SETTINGS if u == unit)
+            vals = [survival_at(rows, lang, RATE_RULE, MIX_RULE, unit, n) for n in ns]
+            monotone &= all(x > y for x, y in zip(vals, vals[1:]))
+    rate_spread = max(
+        max(survival_at(rows, lang, r, MIX_RULE, u, n) for r in RATES)
+        - min(survival_at(rows, lang, r, MIX_RULE, u, n) for r in RATES)
+        for lang in SAMPLES for u, n in SETTINGS
+    )
+    lines.append(
+        "- Survival alone cannot choose M1's unit. It falls as n rises "
+        + ("for every unit type in both languages" if monotone else "for most unit types")
+        + ", and it is higher for finer units and shorter grams, so a unit that splits words more finely scores higher "
+        "even though it says nothing about how many false matches it lets through, which is what retrieval depends on."
+    )
+    lines.append(
+        f"- Survival is nearly flat across error rates in every setting (largest spread across rates {rate_spread:.3f}), "
+        "so the rate does not change the ranking either."
+    )
+
+    # Span-matched view: count which side wins at matched span, per unit family.
+    tally = {"akshara": [0, 0], "decomposed": [0, 0]}  # [wins for non-char, pairs]
+    detail = []
+    for lang in SAMPLES:
+        for p in span_pairs(rows, lang):
+            fam = p["a"]["unit"]
+            tally[fam][1] += 1
+            if p["winner"] == "a":
+                tally[fam][0] += 1
+            detail.append(
+                f"{lang} {label(fam, p['a']['n'])} (span {p['a']['mean_span_chars']:.2f}, survival {fmt(p['a']['mean_survival'])}) "
+                f"vs {label('char', p['c']['n'])} (span {p['c']['mean_span_chars']:.2f}, survival {fmt(p['c']['mean_survival'])})"
+            )
+    if detail:
+        span_line = "; ".join(
+            f"{fam} beats char at matched span in {w} of {t} pairs" for fam, (w, t) in tally.items() if t
+        )
+        lines.append(
+            f"- Span-matched view (settings within {SPAN_TOL:.1f} characters of mean span, rate 0.10, all ops): "
+            + span_line + ". Pairs: " + "; ".join(detail) + "."
+        )
+        lines.append(
+            "- Tentative from the span-matched view: "
+            + "; ".join(f"{fam} wins {w} of {t} matched pairs against char" for fam, (w, t) in tally.items() if t)
+            + ". With so few pairs this is tentative and should not be used for M1 on its own."
+        )
+    else:
+        lines.append(f"- Span-matched view: no akshara or decomposed setting falls within {SPAN_TOL:.1f} characters of a char setting.")
+    lines.append(
+        "- Decision: M1's unit and n are not chosen by this pilot. They will be chosen by retrieval accuracy in Plan 4, "
+        "with akshara, decomposed and char variants all kept as candidates."
+    )
+    return "\n".join(lines)
+
+
+def write_md(rows: list[dict], dropped: dict[tuple[str, str], int], sentence_counts: dict[str, int]) -> None:
     lines: list[str] = []
     add = lines.append
     add("# P3: n-gram survival under akshara-level OCR errors (pilot)")
@@ -154,11 +248,13 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
     add("- Op mixes: " + "; ".join(
         f"{name} = {', '.join(f'{op} {w}' for op, w in mix.items())}" for name, mix in MIXES.items()
     ) + ". `split_mark` is excluded everywhere.")
-    add("- Each cell is the mean of `survival(before, after, unit, n)` over the changed words only, "
+    add("- Each survival cell is the mean of `survival(before, after, unit, n)` over the changed words only, "
         "pooled over sentences and seeds. Survival is the fraction of the clean word's n-grams that also occur in the noisy word.")
     add("- `n_words` is the number of changed words pooled into each cell (the same for all units and n within a rate and mix).")
     add("- Off-mix filter: a changed word is kept only if the op actually applied (the log's `op`) has positive weight in its mix. "
         "Entries whose op is outside the mix are dropped and counted in `n_offmix_dropped`. The filter is applied to all three mixes.")
+    add("- `mean span (chars)` is the mean number of Unicode characters per n-gram over the clean words of the same sentences. "
+        "It is a property of the setting, not of the error rate or mix.")
     add("")
     for lang in SAMPLES:
         add(f"## {LANG_NAMES[lang]} ({lang})")
@@ -166,14 +262,30 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
         for mix in MIXES:
             add(f"### {lang}, op mix: {mix}")
             add("")
-            add("| unit, n | " + " | ".join(f"rate {r:.2f}" for r in RATES) + " |")
-            add("|---|" + "---|" * len(RATES))
+            add("| unit, n | mean span (chars) | " + " | ".join(f"rate {r:.2f}" for r in RATES) + " |")
+            add("|---|---|" + "---|" * len(RATES))
             for unit, n in SETTINGS:
-                cells = [fmt(lookup(rows, lang, r, mix, unit, n)) for r in RATES]
-                add(f"| {label(unit, n)} | " + " | ".join(cells) + " |")
+                span = cell(rows, lang, RATES[0], mix, unit, n)["mean_span_chars"]
+                cells = [fmt(survival_at(rows, lang, r, mix, unit, n)) for r in RATES]
+                add(f"| {label(unit, n)} | {span:.2f} | " + " | ".join(cells) + " |")
             add("")
-            add("Changed words pooled: " + ", ".join(f"rate {r:.2f}: {n_words[(lang, r, mix)]}" for r in RATES) + ".")
+            add("Changed words pooled: " + ", ".join(
+                f"rate {r:.2f}: {cell(rows, lang, r, mix, 'char', 3)['n_words']}" for r in RATES) + ".")
             add("")
+            if mix == "conjunct only":
+                add("This cell set is a filtered subset: only words containing a virama followed by a consonant are eligible, "
+                    "so it differs systematically from the all-ops sample.")
+                add("")
+        add(f"### {lang} span-matched view, rate {RATE_RULE:.2f}, op mix: {MIX_RULE}")
+        add("")
+        add("Settings sorted by mean span, so settings of similar span can be compared directly.")
+        add("")
+        add("| unit, n | mean span (chars) | mean survival |")
+        add("|---|---|---|")
+        base = [r for r in rows if r["lang"] == lang and r["rate"] == RATE_RULE and r["mix"] == MIX_RULE]
+        for r in sorted(base, key=lambda r: r["mean_span_chars"]):
+            add(f"| {label(r['unit'], r['n'])} | {r['mean_span_chars']:.2f} | {fmt(r['mean_survival'])} |")
+        add("")
     add("## Pass criterion")
     add("")
     add("Aksharas survive at least as well as characters")
@@ -182,9 +294,8 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
         "(akshara n=2 or n=3) has mean survival >= the best char setting (char n=3, 4 or 5). "
         "Decomposed settings are reported above but are not part of the rule.")
     add("")
-    verdicts = [pass_check(rows, lang) for lang in SAMPLES]
-    for _, text in verdicts:
-        add(f"- {text}")
+    for lang in SAMPLES:
+        add(f"- {pass_check(rows, lang)[1]}")
     add("")
     add("## Notes on the op mix")
     add("")
@@ -193,7 +304,7 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
         "and the drop counts are shown below (totals over all rates and seeds):")
     add("")
     for lang in SAMPLES:
-        parts = [f"{mix}: {off_mix[(lang, mix)]}" for mix in MIXES]
+        parts = [f"{mix}: {dropped[(lang, mix)]}" for mix in MIXES]
         add(f"- {LANG_NAMES[lang]}: " + "; ".join(parts) + " entries dropped.")
     add("")
     add("## Caveat")
@@ -202,7 +313,7 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
     add("")
     add("## Decision")
     add("")
-    add(DECISION)
+    add(decision_text(rows))
     add("")
     MD_PATH.write_text("\n".join(lines), encoding="utf-8")
 
@@ -210,29 +321,28 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
 def main() -> None:
     t0 = time.time()
     rows: list[dict] = []
-    off_mix: dict[tuple[str, str], int] = {}
-    n_words: dict[tuple[str, float, str], int] = {}
+    dropped: dict[tuple[str, str], int] = {}
     sentence_counts: dict[str, int] = {}
     for lang, path in SAMPLES.items():
         sentences = load_sentences(path)
         sentence_counts[lang] = len(sentences)
         log(f"[{lang}] {len(sentences)} sentences from {path.relative_to(ROOT)}")
+        spans = {(u, n): mean_span(sentences, u, n) for u, n in SETTINGS}
         for rate in RATES:
             for mix_name, mix in MIXES.items():
-                pairs, dropped = corrupt(sentences, rate, mix)
-                off_mix[(lang, mix_name)] = off_mix.get((lang, mix_name), 0) + dropped
-                n_words[(lang, rate, mix_name)] = len(pairs)
+                pairs, drop = corrupt(sentences, rate, mix)
+                dropped[(lang, mix_name)] = dropped.get((lang, mix_name), 0) + drop
                 for unit, n in SETTINGS:
                     vals = [survival(b, a, unit, n) for b, a in pairs]
                     mean = sum(vals) / len(vals) if vals else float("nan")
                     rows.append({
                         "lang": lang, "rate": rate, "mix": mix_name, "unit": unit,
                         "n": n, "mean_survival": mean, "n_words": len(pairs),
-                        "n_offmix_dropped": dropped,
+                        "n_offmix_dropped": drop, "mean_span_chars": spans[(unit, n)],
                     })
                 log(f"[{lang}] rate={rate:.2f} mix={mix_name}: {len(pairs)} changed words ({time.time() - t0:.1f}s)")
     write_csv(rows)
-    write_md(rows, off_mix, n_words, sentence_counts)
+    write_md(rows, dropped, sentence_counts)
     log(f"wrote {CSV_PATH.relative_to(ROOT)} and {MD_PATH.relative_to(ROOT)} in {time.time() - t0:.1f}s")
 
 
