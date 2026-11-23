@@ -35,3 +35,11 @@ def test_rate_outside_unit_interval_raises(rate):
         inject_akshara_errors(TEXT, rate, random.Random(0))
     with pytest.raises(ValueError):
         inject_char_noise(TEXT, rate, random.Random(0))
+
+def test_unknown_op_weight_key_raises():
+    with pytest.raises(ValueError, match="matra_swp"):
+        inject_akshara_errors(TEXT, 0.5, random.Random(0), {"matra_swp": 1.0})
+
+def test_eligible_word_rate_keyword():
+    a, log = inject_akshara_errors(TEXT, eligible_word_rate=0.5, rng=random.Random(4), op_weights=NO_SPLIT)
+    assert len(log) == round(0.5 * len(TEXT.split()))

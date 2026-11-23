@@ -77,19 +77,27 @@ def _choose_op(word: str, weights: dict[ErrorOp, float], rng: random.Random) -> 
 
 def inject_akshara_errors(
     text: str,
-    word_error_rate: float,
+    eligible_word_rate: float,
     rng: random.Random,
     op_weights: dict[ErrorOp, float] | None = None,
 ) -> tuple[str, list[dict]]:
-    """Apply one akshara-level error to ``round(word_error_rate * n_eligible)`` words.
+    """Apply one akshara-level error to ``round(eligible_word_rate * n_eligible)`` words.
+
+    ``eligible_word_rate`` is the fraction of eligible words that receive exactly
+    one error. It is not the word error rate of the output: an insertion such as
+    ``split_mark`` adds a unit, so the measured word error rate is higher.
 
     A word is eligible if it contains a Telugu or Tamil character and at least
     one of the five ops has a target in it. Returns the new text and one log
     entry per changed word: ``{"word_index", "op", "before", "after"}``.
+    Unknown keys in ``op_weights`` raise ``ValueError``.
     """
-    if not 0.0 <= word_error_rate <= 1.0:
-        raise ValueError(f"word_error_rate must be in [0, 1], got {word_error_rate}")
+    if not 0.0 <= eligible_word_rate <= 1.0:
+        raise ValueError(f"eligible_word_rate must be in [0, 1], got {eligible_word_rate}")
     weights = {op: 1.0 for op in OPS} if op_weights is None else op_weights
+    unknown = set(weights) - set(OPS)
+    if unknown:
+        raise ValueError(f"unknown op_weights keys: {sorted(unknown)}")
     if sum(weights.get(op, 0) for op in OPS) <= 0:
         raise ValueError("op_weights must have at least one positive weight")
 
@@ -102,7 +110,7 @@ def inject_akshara_errors(
         if any(script_of(ch) for ch in word) and any(_targets(word, op) for op in OPS):
             eligible.append(w_idx)
 
-    chosen = sorted(rng.sample(eligible, round(word_error_rate * len(eligible))))
+    chosen = sorted(rng.sample(eligible, round(eligible_word_rate * len(eligible))))
 
     log: list[dict] = []
     for w_idx in chosen:

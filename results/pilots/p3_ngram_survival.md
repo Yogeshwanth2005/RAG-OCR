@@ -7,7 +7,7 @@ Command: `python pilots/p3_ngram_survival.py` (from the repository root).
 ## Setup
 
 - Sentences: first 300 non-empty lines of each sample file Telugu 300, Tamil 300.
-- Word error rates: 0.05, 0.10, 0.20, 0.30. Seeds: 0..9.
+- Eligible-word rates (share of eligible words corrupted): 0.05, 0.10, 0.20, 0.30. Seeds: 0..9.
 - Op mixes: all ops = matra_swap 1, matra_drop 1, virama_drop 1, consonant_swap 1; matra only = matra_swap 1, matra_drop 1; conjunct only = virama_drop 1. `split_mark` is excluded everywhere.
 - Each survival cell is the mean of `survival(before, after, unit, n)` over the changed words only, pooled over sentences and seeds. Survival is the fraction of the clean word's n-grams that also occur in the noisy word.
 - `n_words` is the number of changed words pooled into each cell (the same for all units and n within a rate and mix).
@@ -138,7 +138,7 @@ Settings sorted by mean span, so settings of similar span can be compared direct
 
 Aksharas survive at least as well as characters
 
-Rule: at word error rate 0.10 with op mix "all ops", PASS if the best akshara setting (akshara n=2 or n=3) has mean survival >= the best char setting (char n=3, 4 or 5). Decomposed settings are reported above but are not part of the rule.
+Rule: at eligible-word rate 0.10 (10% of eligible words corrupted) with op mix "all ops", PASS if the best akshara setting (akshara n=2 or n=3) has mean survival >= the best char setting (char n=3, 4 or 5). Decomposed settings are reported above but are not part of the rule.
 
 - **Telugu (te): FAIL**: best akshara 0.340 (akshara n=2) vs best char 0.489 (char n=3)
 - **Tamil (ta): FAIL**: best akshara 0.495 (akshara n=2) vs best char 0.518 (char n=3)

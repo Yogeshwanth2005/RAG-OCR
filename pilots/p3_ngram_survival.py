@@ -1,7 +1,7 @@
 """Pilot P3: do akshara n-grams survive OCR-like errors at least as well as character n-grams?
 
 Tests hypothesis H2. For each language, the first N_SENTENCES non-empty lines of the
-sample file are corrupted with ``inject_akshara_errors`` at each word error rate, op
+sample file are corrupted with ``inject_akshara_errors`` at each eligible-word rate (share of eligible words corrupted), op
 mix and seed. Every changed word is then scored with ``survival(before, after, kind, n)``
 and the scores are averaged per (lang, rate, mix, unit, n), pooled over sentences and seeds.
 Each setting also gets ``mean_span_chars``: the mean number of characters per n-gram over
@@ -244,7 +244,7 @@ def write_md(rows: list[dict], dropped: dict[tuple[str, str], int], sentence_cou
     add("")
     add(f"- Sentences: first {N_SENTENCES} non-empty lines of each sample file "
         + ", ".join(f"{LANG_NAMES[l]} {sentence_counts[l]}" for l in SAMPLES) + ".")
-    add(f"- Word error rates: {', '.join(f'{r:.2f}' for r in RATES)}. Seeds: {SEEDS.start}..{SEEDS.stop - 1}.")
+    add(f"- Eligible-word rates (share of eligible words corrupted): {', '.join(f'{r:.2f}' for r in RATES)}. Seeds: {SEEDS.start}..{SEEDS.stop - 1}.")
     add("- Op mixes: " + "; ".join(
         f"{name} = {', '.join(f'{op} {w}' for op, w in mix.items())}" for name, mix in MIXES.items()
     ) + ". `split_mark` is excluded everywhere.")
@@ -290,7 +290,7 @@ def write_md(rows: list[dict], dropped: dict[tuple[str, str], int], sentence_cou
     add("")
     add("Aksharas survive at least as well as characters")
     add("")
-    add(f"Rule: at word error rate {RATE_RULE:.2f} with op mix \"{MIX_RULE}\", PASS if the best akshara setting "
+    add(f"Rule: at eligible-word rate {RATE_RULE:.2f} ({RATE_RULE:.0%} of eligible words corrupted) with op mix \"{MIX_RULE}\", PASS if the best akshara setting "
         "(akshara n=2 or n=3) has mean survival >= the best char setting (char n=3, 4 or 5). "
         "Decomposed settings are reported above but are not part of the rule.")
     add("")

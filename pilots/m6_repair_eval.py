@@ -2,7 +2,7 @@
 
 Three measurements per language (Telugu, Tamil):
 
-1. Synthetic: `split_mark` and `virama_drop` akshara errors injected at word error rate 0.10
+1. Synthetic: `split_mark` and `virama_drop` akshara errors injected at eligible-word rate 0.10 (10% of eligible words corrupted)
    into the first 300 non-empty sample sentences, seeds 0-9. Akshara error rate against the
    clean sentence before and after repair; share of injected errors fixed per op, over pure
    sentences (only that op injected) and over all sentences containing that op.
@@ -269,7 +269,7 @@ def build_report(synth, real, over, timing: float) -> tuple[str, list[dict]]:
     add("")
     add("- Repair: `ocrrag.repair.repair_text`. Rules in order: `rejoin_mark`, `dedupe_mark`, `rejoin_conjunct` (Telugu only), `nfc`.")
     add("- Metric: `ocrrag.align.error_rate`, akshara units. Real OCR is scored with `ocrrag.text.strip_invisible` on both sides (\"scored\"); the repaired OCR is stripped after repair.")
-    add(f"- Synthetic: first {SYNTH_SENTENCES} non-empty lines of each sample file, injected with `inject_akshara_errors` at word error rate {SYNTH_RATE:.2f}, op weights {SYNTH_OP_WEIGHTS}, seeds {SEEDS[0]}-{SEEDS[-1]} (a fresh `random.Random(seed)` per seed, applied per sentence). Error rate is measured against the clean sentence.")
+    add(f"- Synthetic: first {SYNTH_SENTENCES} non-empty lines of each sample file, injected with `inject_akshara_errors` at eligible-word rate {SYNTH_RATE:.2f} ({SYNTH_RATE:.0%} of eligible words corrupted), op weights {SYNTH_OP_WEIGHTS}, seeds {SEEDS[0]}-{SEEDS[-1]} (a fresh `random.Random(seed)` per seed, applied per sentence). Error rate is measured against the clean sentence.")
     add("- Fixed (synthetic): a sentence counts as fixed when `normalize(repaired) == normalize(clean)`. Two shares are reported. The **pure** share uses only sentences whose sole injected op is that op; it is the headline. The **all-sentences** share uses sentences with exactly one entry of that op. It counts sentences that also had another injected op as unfixed, because those cannot match the clean sentence through this repair, so that share is biased down.")
     add("- Real OCR: Tesseract outputs from P1 (`data/pilots/p1_ocr/<page_id>_L<level>.txt`) against `<page_id>_gt.txt`. Figures are the mean over the 20 pages of the language. A page-level result is one page at one level (80 per language, 160 in total).")
     add("- Over-correction: `repair_text` on every non-empty line of the full clean sample files. Changed words are counted with a token diff.")
