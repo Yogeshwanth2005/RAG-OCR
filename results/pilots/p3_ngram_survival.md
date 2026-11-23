@@ -11,6 +11,7 @@ Command: `python pilots/p3_ngram_survival.py` (from the repository root).
 - Op mixes: all ops = matra_swap 1, matra_drop 1, virama_drop 1, consonant_swap 1; matra only = matra_swap 1, matra_drop 1; conjunct only = virama_drop 1. `split_mark` is excluded everywhere.
 - Each cell is the mean of `survival(before, after, unit, n)` over the changed words only, pooled over sentences and seeds. Survival is the fraction of the clean word's n-grams that also occur in the noisy word.
 - `n_words` is the number of changed words pooled into each cell (the same for all units and n within a rate and mix).
+- Off-mix filter: a changed word is kept only if the op actually applied (the log's `op`) has positive weight in its mix. Entries whose op is outside the mix are dropped and counted in `n_offmix_dropped`. The filter is applied to all three mixes.
 
 ## Telugu (te)
 
@@ -32,29 +33,29 @@ Changed words pooled: rate 0.05: 1200, rate 0.10: 3350, rate 0.20: 6090, rate 0.
 
 | unit, n | rate 0.05 | rate 0.10 | rate 0.20 | rate 0.30 |
 |---|---|---|---|---|
-| akshara n=2 | 0.347 | 0.344 | 0.331 | 0.348 |
-| akshara n=3 | 0.146 | 0.146 | 0.132 | 0.146 |
-| decomposed n=2 | 0.594 | 0.586 | 0.576 | 0.583 |
-| decomposed n=3 | 0.416 | 0.403 | 0.391 | 0.405 |
-| char n=3 | 0.516 | 0.501 | 0.494 | 0.508 |
-| char n=4 | 0.364 | 0.362 | 0.347 | 0.364 |
-| char n=5 | 0.255 | 0.249 | 0.235 | 0.256 |
+| akshara n=2 | 0.357 | 0.357 | 0.343 | 0.361 |
+| akshara n=3 | 0.155 | 0.155 | 0.142 | 0.155 |
+| decomposed n=2 | 0.619 | 0.613 | 0.604 | 0.610 |
+| decomposed n=3 | 0.438 | 0.427 | 0.417 | 0.431 |
+| char n=3 | 0.536 | 0.525 | 0.518 | 0.532 |
+| char n=4 | 0.382 | 0.382 | 0.367 | 0.385 |
+| char n=5 | 0.268 | 0.264 | 0.252 | 0.273 |
 
-Changed words pooled: rate 0.05: 1200, rate 0.10: 3350, rate 0.20: 6090, rate 0.30: 9270.
+Changed words pooled: rate 0.05: 1119, rate 0.10: 3103, rate 0.20: 5613, rate 0.30: 8567.
 
 ### te, op mix: conjunct only
 
 | unit, n | rate 0.05 | rate 0.10 | rate 0.20 | rate 0.30 |
 |---|---|---|---|---|
-| akshara n=2 | 0.326 | 0.322 | 0.327 | 0.327 |
-| akshara n=3 | 0.145 | 0.130 | 0.131 | 0.133 |
-| decomposed n=2 | 0.606 | 0.603 | 0.609 | 0.605 |
-| decomposed n=3 | 0.422 | 0.415 | 0.421 | 0.413 |
-| char n=3 | 0.482 | 0.476 | 0.480 | 0.474 |
-| char n=4 | 0.316 | 0.317 | 0.318 | 0.312 |
-| char n=5 | 0.205 | 0.205 | 0.203 | 0.200 |
+| akshara n=2 | 0.326 | 0.332 | 0.337 | 0.333 |
+| akshara n=3 | 0.138 | 0.132 | 0.137 | 0.137 |
+| decomposed n=2 | 0.573 | 0.588 | 0.594 | 0.588 |
+| decomposed n=3 | 0.382 | 0.394 | 0.401 | 0.390 |
+| char n=3 | 0.505 | 0.517 | 0.522 | 0.517 |
+| char n=4 | 0.352 | 0.363 | 0.368 | 0.359 |
+| char n=5 | 0.236 | 0.243 | 0.247 | 0.242 |
 
-Changed words pooled: rate 0.05: 1200, rate 0.10: 3350, rate 0.20: 6090, rate 0.30: 9270.
+Changed words pooled: rate 0.05: 566, rate 0.10: 1570, rate 0.20: 2807, rate 0.30: 4273.
 
 ## Tamil (ta)
 
@@ -76,29 +77,29 @@ Changed words pooled: rate 0.05: 1470, rate 0.10: 3790, rate 0.20: 6930, rate 0.
 
 | unit, n | rate 0.05 | rate 0.10 | rate 0.20 | rate 0.30 |
 |---|---|---|---|---|
-| akshara n=2 | 0.510 | 0.506 | 0.507 | 0.505 |
-| akshara n=3 | 0.315 | 0.307 | 0.316 | 0.311 |
-| decomposed n=2 | 0.625 | 0.623 | 0.628 | 0.625 |
-| decomposed n=3 | 0.460 | 0.458 | 0.466 | 0.459 |
-| char n=3 | 0.527 | 0.525 | 0.528 | 0.524 |
-| char n=4 | 0.407 | 0.404 | 0.411 | 0.406 |
-| char n=5 | 0.301 | 0.298 | 0.306 | 0.300 |
+| akshara n=2 | 0.521 | 0.520 | 0.520 | 0.518 |
+| akshara n=3 | 0.327 | 0.320 | 0.328 | 0.323 |
+| decomposed n=2 | 0.646 | 0.647 | 0.651 | 0.648 |
+| decomposed n=3 | 0.486 | 0.484 | 0.490 | 0.483 |
+| char n=3 | 0.550 | 0.550 | 0.552 | 0.548 |
+| char n=4 | 0.432 | 0.429 | 0.434 | 0.429 |
+| char n=5 | 0.322 | 0.318 | 0.325 | 0.318 |
 
-Changed words pooled: rate 0.05: 1470, rate 0.10: 3790, rate 0.20: 6930, rate 0.30: 10520.
+Changed words pooled: rate 0.05: 1346, rate 0.10: 3494, rate 0.20: 6421, rate 0.30: 9740.
 
 ### ta, op mix: conjunct only
 
 | unit, n | rate 0.05 | rate 0.10 | rate 0.20 | rate 0.30 |
 |---|---|---|---|---|
-| akshara n=2 | 0.438 | 0.440 | 0.443 | 0.442 |
-| akshara n=3 | 0.228 | 0.233 | 0.237 | 0.237 |
-| decomposed n=2 | 0.615 | 0.621 | 0.619 | 0.620 |
-| decomposed n=3 | 0.410 | 0.417 | 0.416 | 0.417 |
-| char n=3 | 0.475 | 0.480 | 0.481 | 0.484 |
-| char n=4 | 0.320 | 0.328 | 0.331 | 0.333 |
-| char n=5 | 0.206 | 0.215 | 0.219 | 0.218 |
+| akshara n=2 | 0.489 | 0.505 | 0.508 | 0.505 |
+| akshara n=3 | 0.261 | 0.285 | 0.289 | 0.283 |
+| decomposed n=2 | 0.637 | 0.650 | 0.653 | 0.652 |
+| decomposed n=3 | 0.439 | 0.462 | 0.464 | 0.461 |
+| char n=3 | 0.531 | 0.545 | 0.550 | 0.549 |
+| char n=4 | 0.365 | 0.389 | 0.395 | 0.392 |
+| char n=5 | 0.240 | 0.262 | 0.268 | 0.264 |
 
-Changed words pooled: rate 0.05: 1470, rate 0.10: 3790, rate 0.20: 6930, rate 0.30: 10520.
+Changed words pooled: rate 0.05: 924, rate 0.10: 2391, rate 0.20: 4343, rate 0.30: 6626.
 
 ## Pass criterion
 
@@ -111,10 +112,14 @@ Rule: at word error rate 0.10 with op mix "all ops", PASS if the best akshara se
 
 ## Notes on the op mix
 
-`inject_akshara_errors` falls back to any op that has a target in the word when the mix's ops have none, so some changed words carry an op outside their mix. Counts over all rates and seeds:
+`inject_akshara_errors` falls back to any op that has a target in the word when the mix's ops have none, so some changed words carry an op outside their mix. These are dropped by the filter described in Setup, and the drop counts are shown below (totals over all rates and seeds):
 
-- Telugu: all ops: 0; matra only: 1508; conjunct only: 10694 entries outside their mix.
-- Tamil: all ops: 0; matra only: 1709; conjunct only: 8426 entries outside their mix.
+- Telugu: all ops: 0; matra only: 1508; conjunct only: 10694 entries dropped.
+- Tamil: all ops: 0; matra only: 1709; conjunct only: 8426 entries dropped.
+
+## Caveat
+
+The unit types are compared at their own n, not at equal character span. An akshara n=2 window and a char n=3 window cover different amounts of text, so the H2 comparison is not like-for-like. Plan 2 will add a span-matched comparison; this pilot makes no change to that.
 
 ## Decision
 

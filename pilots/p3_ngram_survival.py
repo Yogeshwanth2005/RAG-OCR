@@ -79,18 +79,24 @@ def load_sentences(path: Path) -> list[str]:
 
 
 def corrupt(sentences: list[str], rate: float, mix: dict[str, float]) -> tuple[list[tuple[str, str]], int]:
-    """Changed-word (before, after) pairs pooled over seeds, and the count of entries whose op is outside the mix."""
+    """Changed-word (before, after) pairs pooled over seeds, and the number of entries dropped.
+
+    An entry is kept only if the op actually applied (``entry["op"]``) has positive
+    weight in ``mix``; ``noise.py`` can fall back to an op outside the mix when the
+    mix's ops have no target in the word, and those entries are dropped.
+    """
     pairs: list[tuple[str, str]] = []
-    off_mix = 0
+    dropped = 0
     for seed in SEEDS:
         rng = random.Random(seed)
         for sent in sentences:
             _, entries = inject_akshara_errors(sent, rate, rng, op_weights=mix)
             for e in entries:
-                if e["op"] not in mix:
-                    off_mix += 1
-                pairs.append((e["before"], e["after"]))
-    return pairs, off_mix
+                if mix.get(e["op"], 0) > 0:
+                    pairs.append((e["before"], e["after"]))
+                else:
+                    dropped += 1
+    return pairs, dropped
 
 
 def label(unit: str, n: int) -> str:
@@ -104,7 +110,7 @@ def fmt(x: float) -> str:
 def write_csv(rows: list[dict]) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     with CSV_PATH.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["lang", "rate", "mix", "unit", "n", "mean_survival", "n_words"])
+        w = csv.DictWriter(f, fieldnames=["lang", "rate", "mix", "unit", "n", "mean_survival", "n_words", "n_offmix_dropped"])
         w.writeheader()
         for r in rows:
             w.writerow({**r, "rate": f"{r['rate']:.2f}", "mean_survival": f"{r['mean_survival']:.6f}"})
@@ -151,6 +157,8 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
     add("- Each cell is the mean of `survival(before, after, unit, n)` over the changed words only, "
         "pooled over sentences and seeds. Survival is the fraction of the clean word's n-grams that also occur in the noisy word.")
     add("- `n_words` is the number of changed words pooled into each cell (the same for all units and n within a rate and mix).")
+    add("- Off-mix filter: a changed word is kept only if the op actually applied (the log's `op`) has positive weight in its mix. "
+        "Entries whose op is outside the mix are dropped and counted in `n_offmix_dropped`. The filter is applied to all three mixes.")
     add("")
     for lang in SAMPLES:
         add(f"## {LANG_NAMES[lang]} ({lang})")
@@ -181,11 +189,16 @@ def write_md(rows: list[dict], off_mix: dict[tuple[str, str], int], n_words: dic
     add("## Notes on the op mix")
     add("")
     add("`inject_akshara_errors` falls back to any op that has a target in the word when the mix's ops have none, "
-        "so some changed words carry an op outside their mix. Counts over all rates and seeds:")
+        "so some changed words carry an op outside their mix. These are dropped by the filter described in Setup, "
+        "and the drop counts are shown below (totals over all rates and seeds):")
     add("")
     for lang in SAMPLES:
         parts = [f"{mix}: {off_mix[(lang, mix)]}" for mix in MIXES]
-        add(f"- {LANG_NAMES[lang]}: " + "; ".join(parts) + " entries outside their mix.")
+        add(f"- {LANG_NAMES[lang]}: " + "; ".join(parts) + " entries dropped.")
+    add("")
+    add("## Caveat")
+    add("")
+    add("The unit types are compared at their own n, not at equal character span. An akshara n=2 window and a char n=3 window cover different amounts of text, so the H2 comparison is not like-for-like. Plan 2 will add a span-matched comparison; this pilot makes no change to that.")
     add("")
     add("## Decision")
     add("")
@@ -206,8 +219,8 @@ def main() -> None:
         log(f"[{lang}] {len(sentences)} sentences from {path.relative_to(ROOT)}")
         for rate in RATES:
             for mix_name, mix in MIXES.items():
-                pairs, off = corrupt(sentences, rate, mix)
-                off_mix[(lang, mix_name)] = off_mix.get((lang, mix_name), 0) + off
+                pairs, dropped = corrupt(sentences, rate, mix)
+                off_mix[(lang, mix_name)] = off_mix.get((lang, mix_name), 0) + dropped
                 n_words[(lang, rate, mix_name)] = len(pairs)
                 for unit, n in SETTINGS:
                     vals = [survival(b, a, unit, n) for b, a in pairs]
@@ -215,6 +228,7 @@ def main() -> None:
                     rows.append({
                         "lang": lang, "rate": rate, "mix": mix_name, "unit": unit,
                         "n": n, "mean_survival": mean, "n_words": len(pairs),
+                        "n_offmix_dropped": dropped,
                     })
                 log(f"[{lang}] rate={rate:.2f} mix={mix_name}: {len(pairs)} changed words ({time.time() - t0:.1f}s)")
     write_csv(rows)
