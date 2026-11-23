@@ -20,6 +20,9 @@ def test_classify_virama_and_boundary():
     assert classify(("sub", "న్", "న")) == "virama"
     assert classify(("ins", None, " ")) == "boundary"
 
+def test_classify_vowel_sub_is_other():
+    assert classify(("sub", "అ", "ఆ")) == "other"
+
 def test_classify_rejects_eq():
     import pytest
     with pytest.raises(ValueError):

@@ -107,7 +107,11 @@ def classify(op: EditOp) -> ErrorType:
         if _consonant_count(ref_base) >= 2 or _consonant_count(hyp_base) >= 2:
             return "conjunct"
         return "virama"
-    if ref_marks == hyp_marks:
+    if (
+        ref_marks == hyp_marks
+        and _consonant_count(ref_base) >= 1
+        and _consonant_count(hyp_base) >= 1
+    ):
         return "consonant"
     return "other"
 
