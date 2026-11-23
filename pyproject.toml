@@ -21,5 +21,8 @@ test = ["pytest"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+ocrrag = ["templates/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
