@@ -1,6 +1,7 @@
 data/*
 !data/samples/
 results/**/*.png
+!results/pilots/p1_samples/*.png
 __pycache__/
 .pytest_cache/
 *.egg-info/
