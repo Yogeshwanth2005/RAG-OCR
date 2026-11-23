@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocrrag"
+version = "0.1.0"
+description = "OCR error study for Telugu and Tamil document retrieval (RAG)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pillow",
+    "numpy",
+    "playwright",
+    "augraphy",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
