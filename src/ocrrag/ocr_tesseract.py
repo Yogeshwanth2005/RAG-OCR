@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -29,9 +30,29 @@ class OcrResult:
     engine: str = "tesseract"
 
 
-def _run_tesseract(path: Path, code: str) -> str:
+def _stderr_tail(stderr: bytes | str | None) -> str:
+    if stderr is None:
+        return ""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    return stderr[-2000:]
+
+
+def _run_tesseract(path: Path, code: str, timeout: float) -> str:
     cmd = ["tesseract", str(path), "stdout", "-l", code, "--psm", "3", "tsv"]
-    proc = subprocess.run(cmd, check=True, capture_output=True)
+    command = shlex.join(cmd)
+    try:
+        proc = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"tesseract exited with status {exc.returncode} running {command}: "
+            f"{_stderr_tail(exc.stderr)}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"tesseract timed out after {timeout} s running {command}: "
+            f"{_stderr_tail(exc.stderr)}"
+        ) from exc
     return proc.stdout.decode("utf-8")
 
 
@@ -43,7 +64,7 @@ def _parse_tsv(tsv: str) -> OcrResult:
     for row in reader:
         if row["level"] != WORD_LEVEL or row["conf"] == "-1":
             continue
-        text = row["text"].strip()
+        text = (row.get("text") or "").strip()
         if not text:
             continue
         words.append(OcrWord(text=text, conf=float(row["conf"])))
@@ -55,8 +76,14 @@ def _parse_tsv(tsv: str) -> OcrResult:
     return OcrResult(text="\n".join(" ".join(line) for line in lines), words=words)
 
 
-def ocr_tesseract(image: Path | Image.Image, lang: Literal["te", "ta"]) -> OcrResult:
-    """OCR a page image with Tesseract (``tel`` for ``te``, ``tam`` for ``ta``)."""
+def ocr_tesseract(
+    image: Path | Image.Image, lang: Literal["te", "ta"], timeout: float = 120
+) -> OcrResult:
+    """OCR a page image with Tesseract (``tel`` for ``te``, ``tam`` for ``ta``).
+
+    Raises ``RuntimeError`` (with the command and Tesseract's stderr) if Tesseract
+    fails or runs longer than ``timeout`` seconds.
+    """
     if lang not in TESSERACT_LANG:
         raise ValueError(f"unsupported lang {lang!r}; expected 'te' or 'ta'")
     code = TESSERACT_LANG[lang]
@@ -64,7 +91,7 @@ def ocr_tesseract(image: Path | Image.Image, lang: Literal["te", "ta"]) -> OcrRe
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "page.png"
             image.save(path)
-            tsv = _run_tesseract(path, code)
+            tsv = _run_tesseract(path, code, timeout)
     else:
-        tsv = _run_tesseract(Path(image), code)
+        tsv = _run_tesseract(Path(image), code, timeout)
     return _parse_tsv(tsv)
