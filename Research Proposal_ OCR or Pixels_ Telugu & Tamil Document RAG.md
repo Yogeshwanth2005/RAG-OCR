@@ -66,7 +66,7 @@ The alternative, OCR-free visual retrieval, is attractive precisely because it s
 
 **H1.** OCR-induced degradation in retrieval will be larger for Telugu than for Tamil, tracking the difference in OCR word accuracy between the two scripts.
 
-**H2.** Most OCR errors in both scripts will affect a single akshara or diacritic within a word, so indexing on akshara n-grams will recover a large share of the retrieval lost to OCR noise, and more of it than plain character n-grams.
+**H2.** Most OCR errors in both scripts will affect a single akshara or diacritic within a word. Script-aware units (whole aksharas, or aksharas split into a base and a vowel sign) will recover more of the retrieval lost to OCR noise than plain character n-grams. A pilot on sample text did not find whole-akshara n-grams to survive OCR noise better than character n-grams (§7.9), so this comparison will be decided by retrieval accuracy.
 
 **H3.** Zero-shot visual retrievers will underperform OCR-based retrieval on clean pages but will degrade more gracefully on poor scans, producing a crossover point as page quality worsens.
 
@@ -117,7 +117,7 @@ OCR output is aligned with ground truth at the level of aksharas, using a rule-b
 - **Telugu:** an akshara is an independent vowel, or (consonant + virama)\* + consonant followed by an optional matra and modifiers (anusvara, visarga, chandrabindu, ardhanusvara). Conjuncts are kept as one unit.
 - **Tamil:** a consonant with pulli (mei letter) is its own unit, because Tamil consonant clusters are written visually separate. The joined forms க்ஷ and ஸ்ரீ are treated as single units.
 
-Both segmenters handle ZWJ/ZWNJ and nukta, and both are validated on a hand-checked list of about 50 tricky words per script (conjuncts, words ending in virama or pulli, anusvara and visarga). Exact Python and library versions are recorded. Edit-distance alignment over these units yields substitutions, insertions and deletions, which are aggregated into a confusion model for each script and engine. Errors are further categorised by type: wrong base consonant, dropped or wrong matra, broken or merged conjunct, virama errors, and word-boundary errors. This model answers RQ2 directly and is also used to generate realistic synthetic noise for the controlled experiments in 7.5.
+Both segmenters handle ZWJ/ZWNJ and nukta, and both are validated on a hand-checked list of about 50 tricky words per script (conjuncts, words ending in virama or pulli, anusvara and visarga). Exact Python and library versions are recorded. Edit-distance alignment over these units yields substitutions, insertions and deletions, which are aggregated into a confusion model for each script and engine. Errors are further categorised by type: wrong base consonant, dropped or wrong matra, broken or merged conjunct, virama errors, and word-boundary errors. This model answers RQ2 directly and is also used to generate realistic synthetic noise for the controlled experiments in 7.5. The error model is learned on one set of pages and applied to a separate, disjoint set of pages. OCR output is scored with zero-width joiners and non-joiners (U+200C/U+200D) removed from both the output and the ground truth, because Tesseract inserts them; raw scores are reported alongside.
 
 ### 7.4 Retrieval pipelines
 
@@ -148,7 +148,7 @@ All experiments are run for both Telugu and Tamil.
 
 ### 7.6 Mitigation methods (RQ4)
 
-**M1: Akshara n-gram indexing.** Index overlapping n-grams of aksharas in addition to whole words, so that a word with one misread akshara still shares most of its n-grams with the correct form. This is cheap, interpretable and specific to abugida scripts.
+**M1: Akshara n-gram indexing.** Index overlapping n-grams of aksharas in addition to whole words, so that a word with one misread akshara still shares most of its n-grams with the correct form. The unit is chosen by retrieval accuracy among three candidates: whole aksharas, decomposed units (base and vowel sign as separate units), and plain character n-grams. This is cheap and interpretable.
 
 **M2: Noise-aware embedding fine-tuning.** Fine-tune BGE-M3 with a contrastive objective on pairs of clean queries and passages corrupted by the learned noise model, so the embedding space treats near-identical akshara sequences as matches. To avoid the known failure mode where code-mixed or noisy training erodes relevance matching, the standard query–passage relevance loss is kept and the noise-alignment loss is added alongside it.
 
@@ -158,12 +158,14 @@ M1 and M2 are compared against both simple baselines from 7.4: character n-gram 
 
 **M4: Reliability-weighted fusion.** For each page, combine text and visual retrieval scores with a weight that depends on an estimate of how reliable that page's OCR is: pages that OCR reads well lean on the text score, and poorly read pages lean on the visual score. Two reliability signals are used:
 
-- **Engine confidence.** Its calibration is checked first: for each engine, page-level mean confidence is plotted against the actual akshara error rate and the correlation is reported, because engines (especially Tesseract) can be confidently wrong on Indic scripts and some give no scores.
+- **Engine confidence.** Its calibration is checked first: for each engine, page-level mean confidence is plotted against the actual akshara error rate and the correlation is reported, because engines (especially Tesseract) can be confidently wrong on Indic scripts and some give no scores. In a pilot on Tesseract output, the pooled correlation with akshara error rate was clear in both scripts, but within a single degradation level it was weak for Tamil at the lower levels, so Tamil confidence is not assumed to be calibrated (§7.9).
 - **A confidence-free signal.** The perplexity of the OCR text under a character/akshara n-gram language model trained on the script's Wikipedia, with the out-of-vocabulary rate against a Wikipedia word list as a simpler variant. Perplexity is preferred because Telugu and Tamil are agglutinative, so clean text already contains many words missing from any word list.
 
 M4 is run with confidence alone, with the confidence-free signal alone, and with both. A simple logistic weighting with two parameters is fitted on a development split first; a small learned router is tried afterwards if time allows.
 
 **M5 (stretch): Text-to-visual distillation.** Adapt a visual retriever (ColQwen with LoRA) to Indic scripts without any human-labelled queries. On synthetic pages the exact text is known, so a strong text retriever (BGE-M3 over ground-truth text) can score relevance between each query and every page in a batch. The visual retriever is trained to reproduce that score distribution from page images alone, using a KL-divergence objective over in-batch candidates. The text model acts as teacher and transfers its Indic-language knowledge into the visual student. Synthetic queries for training are generated automatically from page text.
+
+**M6: Script-aware reconstruction.** OCR text is repaired in two stages before indexing. Stage 1 is a rule-based repair of detached vowel signs and repeated marks. In a pilot on Tesseract output (§7.9) it fixed all synthetically detached vowel signs and none of the dropped viramas, changed no clean text, and had a negligible effect on real OCR, so it is kept as an optional safe step and will be re-tested on vision-language OCR. Stage 2 (planned, not yet tested) is a confusion-model and lexicon or language-model correction aimed at the error types that stage 1 cannot reach, namely dropped viramas, substitutions, and deleted or merged units.
 
 ### 7.7 Evaluation metrics
 
@@ -180,11 +182,15 @@ Retrieval results are reported separately for extractive and paraphrased questio
 
 The study will ablate n-gram length in M1 (and in the character n-gram baseline), the balance between relevance and noise-alignment losses in M2, the number of OCR engines in M3, the reliability signal and weighting function in M4, and (if M5 is completed) the number of synthetic training pages and whether including degraded renderings in training helps.
 
+### 7.9 Pilot study
+
+Four CPU pilots and a first repair test were run before any GPU work, on sample Wikipedia text and Tesseract output; the full results and decisions are in `results/pilots/SUMMARY.md`. The akshara segmenters reproduce hand-derived expectations on the tricky-word lists, and a fluent-reader check of the rendered pages is still pending. Survival of n-grams under akshara errors did not favour whole aksharas over character n-grams, so the unit for M1 will be chosen by retrieval accuracy. Tesseract confidence correlates clearly with akshara error rate when pooled across degradation levels in both scripts, but within the lower levels the Tamil correlation is weak, so M4 keeps both reliability signals. Rule-based repair (M6 stage 1) is safe but has a negligible effect on Tesseract output.
+
 ---
 
 ## 8. Compute and Resources
 
-The minimum version (benchmark, OCR runs, error model, E1–E3, M1, M3 and the baselines) needs only inference and lightweight indexing, which runs on free Colab or Kaggle GPUs (T4 class). Covering two languages roughly doubles OCR and indexing time but not development time, since the code is shared. ColPali-3B inference fits within this budget; ColQwen2.5-7B is borderline on a 16 GB GPU and may need quantisation or a subset. M2 (BGE-M3 fine-tuning) is feasible on the same hardware with small batches and gradient accumulation. M5 (LoRA fine-tuning of a visual retriever) is the only component that realistically needs a 24 GB or larger GPU for several days; access will be requested through the faculty advisor or university facilities.
+GPU work runs on Modal, with an NVIDIA L4 (24 GB) as the default; an A10G is used only where it is cheaper per job. The minimum version (benchmark, OCR runs, error model, E1–E3, M1, M3 and the baselines) needs only inference and lightweight indexing, and can also run on free Colab or Kaggle GPUs (T4 class). Covering two languages roughly doubles OCR and indexing time but not development time, since the code is shared. ColPali-3B inference fits within this budget. M2 (BGE-M3 fine-tuning) is feasible on a 24 GB GPU with small batches and gradient accumulation. M5 (LoRA fine-tuning of a visual retriever) uses ColQwen2.5-3B, because the 7B model is too large to fine-tune on 24 GB; it runs for several days on Modal.
 
 Commercial OCR APIs and the LLM post-correction baseline will be run only on a sampled subset of pages to keep costs low. All other software (Chromium, Tesseract, Surya, BGE-M3, ColPali-family models, OHRBench evaluation code) is open-source.
 
@@ -219,7 +225,7 @@ Question checking runs in parallel with the OCR jobs rather than after them. Tex
 | Commercial OCR costs exceed budget | Low | Run commercial engines and LLM correction on a sampled subset; open-source engines cover the full corpus |
 | Zero-shot visual retrievers perform near random on Telugu or Tamil | Medium | This is itself a reportable finding that motivates M5; the paper does not depend on visual retrieval succeeding |
 | M5 distillation fails to improve over the text path | Medium | M5 is a stretch goal; a negative result with analysis is still informative and can be reported in an extended version |
-| Insufficient GPU for M5 | Medium | Request access through the advisor; otherwise defer M5 to the post-submission extension |
+| M5 limited to 3B-parameter visual retrievers on a 24 GB GPU | Medium | Use ColQwen2.5-3B with LoRA on a 24 GB Modal L4 and do not attempt the 7B model; if 3B training does not fit or does not help, defer M5 to the post-submission extension |
 | A closely related paper appears before submission | Low–Medium | Complete the literature check in week one and position contributions around the script-specific error model and fusion method, which are least likely to be duplicated |
 
 ---
