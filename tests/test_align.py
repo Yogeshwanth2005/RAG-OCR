@@ -9,7 +9,10 @@ def test_error_rates_edge_cases():
     assert error_rate("తెలుగు", "తెలుగు", "char") == 0.0
 
 def test_tamil_two_part_vowel_not_an_error():
-    assert error_rate("கொடு", "கொடு", "akshara") == 0.0
+    composed = "கொடு"                       # U+0BCA
+    decomposed = "கொடு"                     # U+0BC6 U+0BBE, same text after NFC
+    assert composed != decomposed
+    assert error_rate(composed, decomposed, "akshara") == 0.0
 
 def test_classify():
     assert classify(("sub", "కా", "కి")) == "matra"
@@ -22,6 +25,16 @@ def test_classify_virama_and_boundary():
 
 def test_classify_vowel_sub_is_other():
     assert classify(("sub", "అ", "ఆ")) == "other"
+
+def test_classify_non_indic_is_other():
+    assert classify(("sub", "1", "2")) == "other"
+    assert classify(("sub", "a", "b")) == "other"
+    assert classify(("sub", "।", "|")) == "other"
+
+def test_classify_consonant_with_marks():
+    assert classify(("sub", "மௌ", "ள")) == "consonant"
+    assert classify(("sub", "ரு", "க")) == "consonant"
+    assert classify(("sub", "ள்", "கு")) == "consonant"
 
 def test_classify_rejects_eq():
     import pytest

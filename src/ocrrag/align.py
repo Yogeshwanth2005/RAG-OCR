@@ -89,8 +89,19 @@ def _consonant_count(unit: str) -> int:
     return sum(1 for ch in unit if char_class(ch) == "consonant")
 
 
+def _strip_viramas(base: str) -> str:
+    return "".join(ch for ch in base if char_class(ch) != "virama")
+
+
 def classify(op: EditOp) -> ErrorType:
-    """Assign an error type to a non-eq edit operation."""
+    """Assign an error type to a non-eq edit operation.
+
+    Order for substitutions: an empty base on either side is "other" (not
+    Telugu/Tamil); equal bases with different marks is "matra"; two bases that
+    each hold a consonant and differ even ignoring viramas is "consonant"; a
+    virama-count difference is "conjunct" if either base has two or more
+    consonants, else "virama"; anything else is "other".
+    """
     kind, ref, hyp = op
     if kind == "eq":
         raise ValueError("classify() is only defined for non-eq operations")
@@ -101,18 +112,20 @@ def classify(op: EditOp) -> ErrorType:
     # kind == "sub" from here on; both units are present.
     ref_base, ref_marks = _split_base(ref)
     hyp_base, hyp_marks = _split_base(hyp)
+    if not ref_base or not hyp_base:
+        return "other"
     if ref_base == hyp_base:
         return "matra" if ref_marks != hyp_marks else "other"
+    if (
+        _consonant_count(ref_base) >= 1
+        and _consonant_count(hyp_base) >= 1
+        and _strip_viramas(ref_base) != _strip_viramas(hyp_base)
+    ):
+        return "consonant"
     if _virama_count(ref) != _virama_count(hyp):
         if _consonant_count(ref_base) >= 2 or _consonant_count(hyp_base) >= 2:
             return "conjunct"
         return "virama"
-    if (
-        ref_marks == hyp_marks
-        and _consonant_count(ref_base) >= 1
-        and _consonant_count(hyp_base) >= 1
-    ):
-        return "consonant"
     return "other"
 
 
