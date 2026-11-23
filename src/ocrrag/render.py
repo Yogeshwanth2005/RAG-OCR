@@ -12,6 +12,7 @@ import html
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -46,7 +47,8 @@ def _css_string(value: str) -> str:
 
 def _body_html(text: str) -> str:
     """Escape text and turn it into paragraphs: blank lines split, single newlines become <br>."""
-    paragraphs = [p for p in re.split(r"\n[ \t]*\n", text) if p.strip()]
+    normalized = text.replace("\r\n", "\n")
+    paragraphs = [p for p in re.split(r"\n\s*\n", normalized) if p.strip()]
     return "\n".join(
         "    <p>" + html.escape(p).replace("\n", "<br>") + "</p>" for p in paragraphs
     )
@@ -77,12 +79,39 @@ _OVERFLOW_JS = """() => {
 }"""
 
 
+def _installed_families() -> set[str]:
+    """Return every font family name known to fontconfig."""
+    out = subprocess.run(
+        ["fc-list", ":", "family"], capture_output=True, text=True, check=True
+    ).stdout
+    families: set[str] = set()
+    for line in out.splitlines():
+        families.update(name.strip() for name in line.split(",") if name.strip())
+    return families
+
+
+def _check_fonts(specs: list[PageSpec]) -> None:
+    """Raise ValueError if a spec names a font that is not installed."""
+    installed = _installed_families()
+    checked: set[str] = set()
+    for spec in specs:
+        if spec.font in checked:
+            continue
+        if spec.font not in installed:
+            raise ValueError(
+                f"font {spec.font!r} (page {spec.page_id!r}) is not installed; "
+                "refusing to render with a fallback font"
+            )
+        checked.add(spec.font)
+
+
 def render_pages(specs: list[PageSpec], out_dir: Path, dpi: int = 150) -> list[Path]:
     """Render each spec to ``out_dir/<page_id>.png`` with a ``.json`` sidecar.
 
     One browser is launched for the whole batch. Raises ValueError naming the
     page id if a page's text does not fit on one A4 page.
     """
+    _check_fonts(specs)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     browser_path = os.environ.get("OCRRAG_CHROMIUM", DEFAULT_BROWSER)

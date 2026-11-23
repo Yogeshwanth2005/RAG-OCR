@@ -38,3 +38,17 @@ def test_sidecar_contains_exact_text(tmp_path):
     assert data["font_size_pt"] == 10
     assert data["dpi"] == 150
     assert data["width"] == 1240 and data["height"] == 1754
+
+
+def test_missing_font_raises(tmp_path):
+    with pytest.raises(ValueError, match="No Such Font Sans"):
+        render_pages([PageSpec("nf", "te", "తెలుగు", "No Such Font Sans")], tmp_path)
+
+
+def test_paragraph_split_normalises_newlines():
+    from ocrrag.render import _body_html
+
+    body = _body_html("a\r\n\r\n\nb\n\n")
+    assert body.count("<p>") == 2
+    assert "<br>" not in body
+    assert "<p>a</p>" in body and "<p>b</p>" in body
