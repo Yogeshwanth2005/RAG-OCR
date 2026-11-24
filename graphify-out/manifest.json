@@ -1,0 +1,332 @@
+{
+  "D:\\RAG-OCR\\pilots\\m6_repair_eval.py": {
+    "mtime": 1795496345.4937043,
+    "seen": 1795496685.2929752,
+    "ast_hash": "2f0c40f21f027095631d78ca80f6e0be",
+    "semantic_hash": "2f0c40f21f027095631d78ca80f6e0be"
+  },
+  "D:\\RAG-OCR\\pilots\\p1_render_ocr.py": {
+    "mtime": 1795496345.4937043,
+    "seen": 1795496685.2929752,
+    "ast_hash": "d873f56f805debc5ff2bb3ecc0ad9c32",
+    "semantic_hash": "d873f56f805debc5ff2bb3ecc0ad9c32"
+  },
+  "D:\\RAG-OCR\\pilots\\p3_ngram_survival.py": {
+    "mtime": 1795496345.4937043,
+    "seen": 1795496685.2929752,
+    "ast_hash": "89c518d5bf4b5b9831272add60dc762a",
+    "semantic_hash": "89c518d5bf4b5b9831272add60dc762a"
+  },
+  "D:\\RAG-OCR\\pyproject.toml": {
+    "mtime": 1795496345.4992046,
+    "seen": 1795496685.2929752,
+    "ast_hash": "2e235f1dfaf522e065dd48586725f1bc",
+    "semantic_hash": "2e235f1dfaf522e065dd48586725f1bc"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_confusions_ta.json": {
+    "mtime": 1795496345.5011742,
+    "seen": 1795496685.2929752,
+    "ast_hash": "d342d2240f5ef42b287e5cb87d38b575",
+    "semantic_hash": "d342d2240f5ef42b287e5cb87d38b575"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_confusions_te.json": {
+    "mtime": 1795496345.5021856,
+    "seen": 1795496685.2929752,
+    "ast_hash": "034b7cac1e2d0f23f64a6667eb849554",
+    "semantic_hash": "034b7cac1e2d0f23f64a6667eb849554"
+  },
+  "D:\\RAG-OCR\\scripts\\fetch_samples.py": {
+    "mtime": 1795496345.5437608,
+    "seen": 1795496685.2929752,
+    "ast_hash": "99d2918bba14f9be64909fef24cfe039",
+    "semantic_hash": "99d2918bba14f9be64909fef24cfe039"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\__init__.py": {
+    "mtime": 1795496345.5484486,
+    "seen": 1795496685.2929752,
+    "ast_hash": "b71a6d3ebdf5fda1fe17df00879db1b7",
+    "semantic_hash": "b71a6d3ebdf5fda1fe17df00879db1b7"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\akshara.py": {
+    "mtime": 1795496345.5484486,
+    "seen": 1795496685.2929752,
+    "ast_hash": "4e4c2a3266c0b704ee69b0c96b02ca77",
+    "semantic_hash": "4e4c2a3266c0b704ee69b0c96b02ca77"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\align.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "bea951cd35c15f94f6cfbcc69a66e287",
+    "semantic_hash": "bea951cd35c15f94f6cfbcc69a66e287"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\degrade.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "2fb2a00af48acac1193dfefee6b35a5b",
+    "semantic_hash": "2fb2a00af48acac1193dfefee6b35a5b"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\ngrams.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "329fc1414a728e76a92b5da5701cefe5",
+    "semantic_hash": "329fc1414a728e76a92b5da5701cefe5"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\noise.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "48312c1e92d0a827d64b6e1129ed6061",
+    "semantic_hash": "48312c1e92d0a827d64b6e1129ed6061"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\ocr_tesseract.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "c9062fe2bb08e6180d28a87bd753f61f",
+    "semantic_hash": "c9062fe2bb08e6180d28a87bd753f61f"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\render.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "43c6b25a54d2fd559e5bca055f2a6464",
+    "semantic_hash": "43c6b25a54d2fd559e5bca055f2a6464"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\repair.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "49c8685656aa0892b3769c338dc1a812",
+    "semantic_hash": "49c8685656aa0892b3769c338dc1a812"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\script.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "1fddf51067be734a9f6c7fa5c3a29759",
+    "semantic_hash": "1fddf51067be734a9f6c7fa5c3a29759"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\text.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "0c2cd112f89504a483c438b477db4fd1",
+    "semantic_hash": "0c2cd112f89504a483c438b477db4fd1"
+  },
+  "D:\\RAG-OCR\\tests\\__init__.py": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "D:\\RAG-OCR\\tests\\test_akshara.py": {
+    "mtime": 1795496345.556569,
+    "seen": 1795496685.2929752,
+    "ast_hash": "83827496ec318b071f4ab6d0c461012a",
+    "semantic_hash": "83827496ec318b071f4ab6d0c461012a"
+  },
+  "D:\\RAG-OCR\\tests\\test_align.py": {
+    "mtime": 1795496345.556569,
+    "seen": 1795496685.2929752,
+    "ast_hash": "d43d31182add1540a114c8fe734d04aa",
+    "semantic_hash": "d43d31182add1540a114c8fe734d04aa"
+  },
+  "D:\\RAG-OCR\\tests\\test_degrade.py": {
+    "mtime": 1795496345.556569,
+    "seen": 1795496685.2929752,
+    "ast_hash": "85f0fc0ade4ad7eef4087955f3573792",
+    "semantic_hash": "85f0fc0ade4ad7eef4087955f3573792"
+  },
+  "D:\\RAG-OCR\\tests\\test_ngrams.py": {
+    "mtime": 1795496345.556569,
+    "seen": 1795496685.2929752,
+    "ast_hash": "b0fddbab6cb2c741696b83797dc4de1f",
+    "semantic_hash": "b0fddbab6cb2c741696b83797dc4de1f"
+  },
+  "D:\\RAG-OCR\\tests\\test_noise.py": {
+    "mtime": 1795496345.5590806,
+    "seen": 1795496685.2929752,
+    "ast_hash": "8f14cb1fb7e836f8d517c862d89501fa",
+    "semantic_hash": "8f14cb1fb7e836f8d517c862d89501fa"
+  },
+  "D:\\RAG-OCR\\tests\\test_ocr_tesseract.py": {
+    "mtime": 1795496345.5590806,
+    "seen": 1795496685.2929752,
+    "ast_hash": "2d84f7d33d37a09ed5546b9c334543eb",
+    "semantic_hash": "2d84f7d33d37a09ed5546b9c334543eb"
+  },
+  "D:\\RAG-OCR\\tests\\test_render.py": {
+    "mtime": 1795496345.5590806,
+    "seen": 1795496685.2929752,
+    "ast_hash": "8f6b2dafe6c8f16136be77455f8d6ae9",
+    "semantic_hash": "8f6b2dafe6c8f16136be77455f8d6ae9"
+  },
+  "D:\\RAG-OCR\\tests\\test_repair.py": {
+    "mtime": 1795496345.56072,
+    "seen": 1795496685.2929752,
+    "ast_hash": "2980c7cbf59c1cc98ceba6440dd4b4d8",
+    "semantic_hash": "2980c7cbf59c1cc98ceba6440dd4b4d8"
+  },
+  "D:\\RAG-OCR\\tests\\test_script.py": {
+    "mtime": 1795496345.56072,
+    "seen": 1795496685.2929752,
+    "ast_hash": "8c0cb339b6edb3cbd44cb0e8c5d89ad7",
+    "semantic_hash": "8c0cb339b6edb3cbd44cb0e8c5d89ad7"
+  },
+  "D:\\RAG-OCR\\tests\\test_smoke.py": {
+    "mtime": 1795496345.56072,
+    "seen": 1795496685.2929752,
+    "ast_hash": "0c692e98cd9ccd64ae0b202fbbe3a68c",
+    "semantic_hash": "0c692e98cd9ccd64ae0b202fbbe3a68c"
+  },
+  "D:\\RAG-OCR\\tests\\test_text.py": {
+    "mtime": 1795496345.56072,
+    "seen": 1795496685.2929752,
+    "ast_hash": "743170608aeb8970363cff8345625007",
+    "semantic_hash": "743170608aeb8970363cff8345625007"
+  },
+  "D:\\RAG-OCR\\Proposal Fixes.md": {
+    "mtime": 1795450493.5351372,
+    "seen": 1795496685.2929752,
+    "ast_hash": "9dc733d9d75b59ca30bdee2cbf201f48",
+    "semantic_hash": "9dc733d9d75b59ca30bdee2cbf201f48"
+  },
+  "D:\\RAG-OCR\\README.md": {
+    "mtime": 1795496345.4809847,
+    "seen": 1795496685.2929752,
+    "ast_hash": "f29c894b0d2bf95f4ced194b4faaae08",
+    "semantic_hash": "f29c894b0d2bf95f4ced194b4faaae08"
+  },
+  "D:\\RAG-OCR\\Research Proposal_ OCR or Pixels_ Telugu & Tamil Document RAG.md": {
+    "mtime": 1795496345.4809847,
+    "seen": 1795496685.2929752,
+    "ast_hash": "a00a5ab1436e4f65beae41ab9f112af2",
+    "semantic_hash": "a00a5ab1436e4f65beae41ab9f112af2"
+  },
+  "D:\\RAG-OCR\\data\\samples\\SOURCES.md": {
+    "mtime": 1795496345.4826202,
+    "seen": 1795496685.2929752,
+    "ast_hash": "5ca65e3832fb58d3d722793eebead133",
+    "semantic_hash": "5ca65e3832fb58d3d722793eebead133"
+  },
+  "D:\\RAG-OCR\\data\\samples\\ta_sample.txt": {
+    "mtime": 1795496345.4874363,
+    "seen": 1795496685.2929752,
+    "ast_hash": "373c4120481589f38d257c23d0739e1a",
+    "semantic_hash": "373c4120481589f38d257c23d0739e1a"
+  },
+  "D:\\RAG-OCR\\data\\samples\\te_sample.txt": {
+    "mtime": 1795496345.4937043,
+    "seen": 1795496685.2929752,
+    "ast_hash": "9f21eba4d9b5ff40d4dc52bd0fc43136",
+    "semantic_hash": "9f21eba4d9b5ff40d4dc52bd0fc43136"
+  },
+  "D:\\RAG-OCR\\docs\\conventions.md": {
+    "mtime": 1795496345.4937043,
+    "seen": 1795496685.2929752,
+    "ast_hash": "655741188285fe10078f50e11fc6bc84",
+    "semantic_hash": "655741188285fe10078f50e11fc6bc84"
+  },
+  "D:\\RAG-OCR\\docs\\superpowers\\plans\\2026-11-23-foundation-cpu-pilots.md": {
+    "mtime": 1795450493.5401344,
+    "seen": 1795496685.2929752,
+    "ast_hash": "24c91b56008e412ad7cc058e515340e5",
+    "semantic_hash": "24c91b56008e412ad7cc058e515340e5"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\SUMMARY.md": {
+    "mtime": 1795496345.4992046,
+    "seen": 1795496685.2929752,
+    "ast_hash": "ce99e0f867966e3ce774c3b933f6fab5",
+    "semantic_hash": "ce99e0f867966e3ce774c3b933f6fab5"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\m6_repair.md": {
+    "mtime": 1795496345.4992046,
+    "seen": 1795496685.2929752,
+    "ast_hash": "76d568bfee524d598ba6af2abd191817",
+    "semantic_hash": "76d568bfee524d598ba6af2abd191817"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_render_ocr.md": {
+    "mtime": 1795496345.5021856,
+    "seen": 1795496685.2929752,
+    "ast_hash": "ebb3db777b2c2f4cd7a6b90717a126f5",
+    "semantic_hash": "ebb3db777b2c2f4cd7a6b90717a126f5"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p2_segmenter.md": {
+    "mtime": 1795496345.5437608,
+    "seen": 1795496685.2929752,
+    "ast_hash": "6698d98757c238c10c71bd15f8f6801c",
+    "semantic_hash": "6698d98757c238c10c71bd15f8f6801c"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p3_ngram_survival.md": {
+    "mtime": 1795496345.5437608,
+    "seen": 1795496685.2929752,
+    "ast_hash": "63ff45d27bfe5e93f8125ec9c247bb69",
+    "semantic_hash": "63ff45d27bfe5e93f8125ec9c247bb69"
+  },
+  "D:\\RAG-OCR\\src\\ocrrag\\templates\\page.html": {
+    "mtime": 1795496345.5494652,
+    "seen": 1795496685.2929752,
+    "ast_hash": "618dff939312cd0897adbb1ebe3917b2",
+    "semantic_hash": "618dff939312cd0897adbb1ebe3917b2"
+  },
+  "D:\\RAG-OCR\\Project Overview.pdf": {
+    "mtime": 1795450493.5331354,
+    "seen": 1795496685.2929752,
+    "ast_hash": "0dc6a6e875bc17b4a091926ac1dfc21c",
+    "semantic_hash": "0dc6a6e875bc17b4a091926ac1dfc21c"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\ta_p01_L0.png": {
+    "mtime": 1795496345.5078733,
+    "seen": 1795496685.2929752,
+    "ast_hash": "0e1343f6618d09eb8ac193d167811441",
+    "semantic_hash": "0e1343f6618d09eb8ac193d167811441"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\ta_p05_L0.png": {
+    "mtime": 1795496345.5128214,
+    "seen": 1795496685.2929752,
+    "ast_hash": "3a1293953094c97141e606a19a6ef94f",
+    "semantic_hash": "3a1293953094c97141e606a19a6ef94f"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\ta_p10_L0.png": {
+    "mtime": 1795496345.5188205,
+    "seen": 1795496685.2929752,
+    "ast_hash": "aab4b97238b1adf19bcb5fcacdcc6014",
+    "semantic_hash": "aab4b97238b1adf19bcb5fcacdcc6014"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\ta_p15_L0.png": {
+    "mtime": 1795496345.520936,
+    "seen": 1795496685.2929752,
+    "ast_hash": "cc769c3883396535b9a7b0547e81a5b6",
+    "semantic_hash": "cc769c3883396535b9a7b0547e81a5b6"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\ta_p20_L0.png": {
+    "mtime": 1795496345.520936,
+    "seen": 1795496685.2929752,
+    "ast_hash": "ddb001ab56ba19f887f9639235fe377e",
+    "semantic_hash": "ddb001ab56ba19f887f9639235fe377e"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\te_p01_L0.png": {
+    "mtime": 1795496345.520936,
+    "seen": 1795496685.2929752,
+    "ast_hash": "16e51cf24b56f89b20ca836220b8ef48",
+    "semantic_hash": "16e51cf24b56f89b20ca836220b8ef48"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\te_p05_L0.png": {
+    "mtime": 1795496345.533068,
+    "seen": 1795496685.2929752,
+    "ast_hash": "9f96bc64b37e2a846e7bc72b52adfa35",
+    "semantic_hash": "9f96bc64b37e2a846e7bc72b52adfa35"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\te_p10_L0.png": {
+    "mtime": 1795496345.533068,
+    "seen": 1795496685.2929752,
+    "ast_hash": "7599df0981fce1675f3895d21e59c408",
+    "semantic_hash": "7599df0981fce1675f3895d21e59c408"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\te_p15_L0.png": {
+    "mtime": 1795496345.541753,
+    "seen": 1795496685.2929752,
+    "ast_hash": "ecf9225711c2ec6353a707386c5f7f0c",
+    "semantic_hash": "ecf9225711c2ec6353a707386c5f7f0c"
+  },
+  "D:\\RAG-OCR\\results\\pilots\\p1_samples\\te_p20_L0.png": {
+    "mtime": 1795496345.5437608,
+    "seen": 1795496685.2929752,
+    "ast_hash": "92ecb7258da7311625cc36b4ca992815",
+    "semantic_hash": "92ecb7258da7311625cc36b4ca992815"
+  }
+}
